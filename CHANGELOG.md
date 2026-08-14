@@ -33,6 +33,9 @@ acceptance check in the conformance specification passes.
 - `internal/tracker`: the per-token trust state machine, which keeps a book out
   of the output entirely unless it is current, plus constant-space volatility
   statistics over the collection window.
+- `internal/report` and `SCHEMA.md`: the output contract at `schema_version`
+  1.0, with the atomic write, the stdout summary line, and tests that hold the
+  documentation and the code to each other.
 
 ### Changed
 ### Deprecated
