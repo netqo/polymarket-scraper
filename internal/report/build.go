@@ -60,7 +60,17 @@ func Build(in Input) Document {
 		if !produced {
 			snapshot = tracker.Missing(id)
 		}
-		doc.Books[id] = renderToken(snapshot)
+
+		token := renderToken(snapshot)
+		doc.Books[id] = token
+
+		// Counted over the requested tokens alone. A consumer reads this
+		// against tokens_requested as a health ratio, so letting a token the
+		// run picked up on its own contribute would make that ratio wrong, and
+		// able to exceed one.
+		if token.Status == string(tracker.StatusOK) {
+			doc.TokensOK++
+		}
 	}
 
 	for _, snapshot := range in.Discovered {
@@ -69,12 +79,6 @@ func Build(in Input) Document {
 		}
 		doc.Books[snapshot.TokenID] = renderToken(snapshot)
 		doc.TokensDiscovered++
-	}
-
-	for _, token := range doc.Books {
-		if token.Status == string(tracker.StatusOK) {
-			doc.TokensOK++
-		}
 	}
 
 	return doc

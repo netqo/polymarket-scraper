@@ -97,8 +97,43 @@ func TestDiscoveredTokensExtendTheDocumentWithoutDisturbingTheCounts(t *testing.
 	if len(doc.Books) != 3 {
 		t.Errorf("got %d books, want the requested two plus one discovered", len(doc.Books))
 	}
+	// The health ratio a consumer computes must stay meaningful: a token the
+	// run picked up on its own is not one that was asked for, and counting it
+	// here would let tokens_ok exceed tokens_requested.
+	if doc.TokensOK != 1 {
+		t.Errorf("TokensOK = %d, want only the requested token that succeeded", doc.TokensOK)
+	}
+	if doc.TokensOK > doc.TokensRequested {
+		t.Errorf("TokensOK %d exceeds TokensRequested %d", doc.TokensOK, doc.TokensRequested)
+	}
+}
+
+// Stated as a property, because the only way it broke was by counting over the
+// wrong collection, and that is easy to reintroduce.
+func TestTokensOKNeverExceedsTokensRequested(t *testing.T) {
+	in := baseInput()
+	in.Requested = []string{"111", "222"}
+	in.Snapshots = map[string]tracker.Snapshot{
+		"111": okSnapshot("111"),
+		"222": okSnapshot("222"),
+	}
+	for _, id := range []string{"901", "902", "903"} {
+		in.Discovered = append(in.Discovered, okSnapshot(id))
+	}
+
+	doc := Build(in)
+
 	if doc.TokensOK != 2 {
-		t.Errorf("TokensOK = %d, want both live tokens counted", doc.TokensOK)
+		t.Errorf("TokensOK = %d, want the 2 requested tokens", doc.TokensOK)
+	}
+	if doc.TokensOK > doc.TokensRequested {
+		t.Errorf("TokensOK %d exceeds TokensRequested %d", doc.TokensOK, doc.TokensRequested)
+	}
+	if doc.TokensDiscovered != 3 {
+		t.Errorf("TokensDiscovered = %d, want 3", doc.TokensDiscovered)
+	}
+	if len(doc.Books) != 5 {
+		t.Errorf("got %d books, want all 5 reported", len(doc.Books))
 	}
 }
 
