@@ -84,3 +84,22 @@ func Missing(tokenID string) Snapshot {
 		Flags:   []Flag{},
 	}
 }
+
+// Unreported builds the snapshot for a token whose state could not be read back
+// at the end of the run.
+//
+// This is not the same as having produced nothing: the token may well have had
+// a perfectly good book, and the run simply could not retrieve it in time. That
+// is precisely why it is reported as a failure rather than as no data. The
+// alternative would be to report whatever was last known, which is the one
+// thing that must never happen.
+func Unreported(tokenID string) Snapshot {
+	return Snapshot{
+		TokenID: tokenID,
+		Status:  StatusResyncFailed,
+		Source:  SourceNone,
+		Bids:    []book.Level{},
+		Asks:    []book.Level{},
+		Flags:   []Flag{},
+	}
+}

@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/netqo/polymarket-scraper/internal/report"
 	"github.com/netqo/polymarket-scraper/internal/restclient"
@@ -43,7 +44,7 @@ func (e *Engine) runRESTOnly(ctx context.Context) (report.Document, error) {
 	e.fetchInBatches(ctx, trackers)
 	e.fetchStragglers(ctx, trackers)
 
-	return e.finalize(startedAt, e.now(), trackers), nil
+	return e.finalizeDocument(startedAt, e.now(), finalizeAll(trackers, e.now())), nil
 }
 
 // fetchInBatches fetches books in as few requests as the endpoint allows.
@@ -90,12 +91,13 @@ func (e *Engine) fetchStragglers(ctx context.Context, trackers map[string]*track
 			continue
 		}
 
-		e.fetchOne(ctx, t, id)
+		e.fetchStraggler(ctx, t, id)
 	}
 }
 
-// fetchOne fetches a single token and records what happened to it.
-func (e *Engine) fetchOne(ctx context.Context, t *tracker.Tracker, id string) {
+// fetchStraggler fetches a single token the batches did not answer for, and
+// records what happened to it.
+func (e *Engine) fetchStraggler(ctx context.Context, t *tracker.Tracker, id string) {
 	fetched, err := e.rest.Book(ctx, id)
 	switch {
 	case err == nil:
@@ -116,6 +118,16 @@ func (e *Engine) fetchOne(ctx context.Context, t *tracker.Tracker, id string) {
 		t.NoteResyncFailed()
 		e.errors.Addf("could not fetch a book for token %s: %v", id, err)
 	}
+}
+
+// finalizeAll freezes every tracker into the value the report writes out.
+func finalizeAll(trackers map[string]*tracker.Tracker, at time.Time) map[string]tracker.Snapshot {
+	snapshots := make(map[string]tracker.Snapshot, len(trackers))
+	for id, t := range trackers {
+		snapshots[id] = t.Finalize(at)
+	}
+
+	return snapshots
 }
 
 // chunk splits ids into batches of at most size.

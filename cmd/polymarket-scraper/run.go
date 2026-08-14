@@ -27,6 +27,12 @@ const (
 	exitOK     = 0
 	exitFailed = 1
 	exitUsage  = 2
+
+	// exitWatchdog means the run would not shut down and the process had to be
+	// terminated. No output document exists at that point, which is the point:
+	// a run that overran its budget has not produced trustworthy data and must
+	// not look as though it has.
+	exitWatchdog = 3
 )
 
 // run is the real entry point: main does nothing but call it and exit, so that
@@ -59,7 +65,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	logTokenListAnomalies(logger, tokens)
 
-	collector, err := engine.New(engine.Options{Config: cfg, Tokens: tokens, Logger: logger})
+	collector, err := engine.New(engine.Options{
+		Config: cfg,
+		Tokens: tokens,
+		Logger: logger,
+		// The watchdog is the only hard guarantee that the process ends on
+		// time: a goroutine blocked in a syscall will never observe a cancelled
+		// context, so nothing short of terminating can be relied upon.
+		Halt: func() { os.Exit(exitWatchdog) },
+	})
 	if err != nil {
 		logger.Error("cannot start the collector", "error", err)
 		return exitUsage

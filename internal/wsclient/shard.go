@@ -50,6 +50,13 @@ const outboundBuffer = 32
 // anything that only watches for a closed connection.
 var ErrIdle = errors.New("the connection delivered nothing before the idle timeout")
 
+// ErrDial reports that the connection could never be opened.
+//
+// It is distinct from every other failure because it means the tokens on this
+// connection were never subscribed at all, which is a different thing to report
+// than a subscription that worked and then broke.
+var ErrDial = errors.New("could not open the connection")
+
 // Frame is one batch of decoded messages, with the time they arrived.
 //
 // Events and Err can both be set. A frame carrying several messages may have
@@ -180,7 +187,7 @@ func (s *Shard) dial(ctx context.Context) (*websocket.Conn, error) {
 		CompressionMode: websocket.CompressionDisabled,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("dialing %s: %w", s.opts.URL, err)
+		return nil, fmt.Errorf("%w: dialing %s: %w", ErrDial, s.opts.URL, err)
 	}
 
 	// Book snapshots for several hundred assets arrive in a single frame, which

@@ -49,8 +49,16 @@ acceptance check in the conformance specification passes.
 - A scripted fake market channel in `internal/testsupport`, able to drop a
   connection, go silent, or accept a subscription and never answer it.
 
+- Websocket collection end to end: reconnection, per-shard single-writer book
+  state, batched re-seeding, the deterministic shutdown timeline, and the
+  watchdog that terminates a run which will not stop.
+- Connection sharding, so a token list wider than one subscription is split
+  across connections rather than silently truncated.
+
 ### Changed
 - `make test` and the CI test gate now run under the race detector.
+- The drain after a collection window ends as soon as no REST work is
+  outstanding, rather than always waiting its full allowance.
 
 ### Deprecated
 ### Removed
