@@ -58,6 +58,10 @@ acceptance check in the conformance specification passes.
   block, deduplicated across connections.
 - Tokens announced mid-window are subscribed to and reported, bounded by
   `--discover-limit` and by the width of the connection.
+- `make acceptance-kill`, which SIGKILLs a run at a spread of moments and checks
+  the output path is never observed truncated, and refuses to pass if no kill
+  landed after a completed write.
+- A `//go:build live` acceptance suite run by hand against the real exchange.
 
 ### Changed
 - `make test` and the CI test gate now run under the race detector.
