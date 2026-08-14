@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -307,23 +306,6 @@ func TestTheDocumentIsAlwaysWellFormed(t *testing.T) {
 	}
 	if document.Connection.WSConnections != 0 {
 		t.Errorf("WSConnections = %d, want 0 in a REST-only run", document.Connection.WSConnections)
-	}
-}
-
-// The websocket path does not exist yet, and a build that cannot do what was
-// asked has to say so rather than quietly doing something else.
-func TestTheWebsocketPathReportsThatItIsNotImplemented(t *testing.T) {
-	fake := testsupport.NewFakeREST(t)
-	cfg := restOnlyConfig(fake.URL())
-	cfg.RESTOnly = false
-
-	collector, err := New(Options{Config: cfg, Tokens: tokenlist.List{IDs: []string{"111"}}})
-	if err != nil {
-		t.Fatalf("New returned error: %v", err)
-	}
-
-	if _, err := collector.Run(context.Background()); !errors.Is(err, ErrNotImplemented) {
-		t.Fatalf("Run returned %v, want ErrNotImplemented", err)
 	}
 }
 

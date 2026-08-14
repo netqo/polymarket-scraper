@@ -1,16 +1,25 @@
 // Package engine runs a collection window and produces the output document.
 //
-// It is the only package that owns goroutines, timers or deadlines, which is
-// deliberate: everything it coordinates is pure and separately tested, so a
-// failure here is a failure of orchestration rather than of interpretation.
+// It is the only package that owns goroutines, timers or deadlines. Everything
+// it coordinates is pure and separately tested, so a failure here is a failure
+// of orchestration rather than of interpretation.
+//
+// One fact shapes the whole design: a Go goroutine blocked in a syscall will
+// never observe a cancelled context. There is no way to kill it, which means
+// the only hard guarantee that a run ends on time is a watchdog that terminates
+// the process. Everything else is cooperative. The consequence is that the
+// document has to be producible without joining any goroutine that performs
+// I/O, and that single constraint is why book state lives behind a
+// single-writer goroutine that does no I/O rather than behind a mutex that an
+// I/O goroutine could be holding at the wrong moment.
 package engine
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/netqo/polymarket-scraper/internal/config"
@@ -19,10 +28,6 @@ import (
 	"github.com/netqo/polymarket-scraper/internal/tokenlist"
 	"github.com/netqo/polymarket-scraper/internal/tracker"
 )
-
-// ErrNotImplemented reports that the requested collection mode does not exist
-// in this build yet.
-var ErrNotImplemented = errors.New("this build can only collect over REST; pass --rest-only")
 
 // Options configure an Engine.
 type Options struct {
@@ -33,21 +38,38 @@ type Options struct {
 	// Now supplies the clock. Tests replace it; production leaves it nil.
 	Now func() time.Time
 
-	// HTTPClient replaces the REST transport. Tests point it at an in-process
-	// server; production leaves it nil.
+	// HTTPClient replaces the transport for both REST and the websocket. Tests
+	// point it at in-process servers; production leaves it nil.
 	HTTPClient *http.Client
+
+	// Halt terminates the process when a run overruns its budget. Tests replace
+	// it so the watchdog can be observed rather than obeyed.
+	Halt func()
 }
 
 // Engine collects a window's worth of order books.
 type Engine struct {
-	cfg    config.Config
-	tokens tokenlist.List
-	logger *slog.Logger
-	now    func() time.Time
+	cfg        config.Config
+	tokens     tokenlist.List
+	logger     *slog.Logger
+	now        func() time.Time
+	httpClient *http.Client
+	halt       func()
 
 	rest   *restclient.Client
 	errors *errorSink
 
+	shards []*shardState
+	resync chan resyncRequest
+
+	reconnects  atomic.Int64
+	restResyncs atomic.Int64
+
+	// outstanding counts REST work in flight, so the drain after the window
+	// closes lasts only as long as there is something to wait for.
+	outstanding atomic.Int64
+
+	// restSeeded counts books taken over REST in a rest-only run.
 	restSeeded int
 }
 
@@ -67,19 +89,27 @@ func New(opts Options) (*Engine, error) {
 	if now == nil {
 		now = time.Now
 	}
-
 	logger := opts.Logger
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
 	}
+	halt := opts.Halt
+	if halt == nil {
+		halt = func() {}
+	}
 
 	return &Engine{
-		cfg:    opts.Config,
-		tokens: opts.Tokens,
-		logger: logger,
-		now:    now,
-		rest:   rest,
-		errors: &errorSink{},
+		cfg:        opts.Config,
+		tokens:     opts.Tokens,
+		logger:     logger,
+		now:        now,
+		httpClient: opts.HTTPClient,
+		halt:       halt,
+		rest:       rest,
+		errors:     &errorSink{},
+		// Sized so every token can have a re-seed outstanding at once, which
+		// is exactly what a disconnect produces.
+		resync: make(chan resyncRequest, len(opts.Tokens.IDs)+resyncWorkers),
 	}, nil
 }
 
@@ -90,20 +120,38 @@ func New(opts Options) (*Engine, error) {
 // status is for, and a document full of honest failures is far more useful to
 // a consumer than no document.
 func (e *Engine) Run(ctx context.Context) (report.Document, error) {
-	if !e.cfg.RESTOnly {
-		return report.Document{}, ErrNotImplemented
+	if e.cfg.RESTOnly {
+		return e.runRESTOnly(ctx)
 	}
 
-	return e.runRESTOnly(ctx)
+	return e.runWebsocket(ctx)
 }
 
-// newTrackers builds one tracker per requested token, in request order.
-func (e *Engine) newTrackers() map[string]*tracker.Tracker {
-	opts := tracker.Options{
+// buildShards splits the token list across connections.
+//
+// The width stays well below the point where the server accepts a subscription
+// and then silently declines to send the initial snapshot, which is a failure
+// that reports nothing and looks exactly like a healthy connection.
+func (e *Engine) buildShards() {
+	opts := e.trackerOptions()
+
+	for _, assetIDs := range chunk(e.tokens.IDs, e.cfg.MaxAssetsPerConnection) {
+		e.shards = append(e.shards, newShardState(len(e.shards), assetIDs, opts))
+	}
+}
+
+func (e *Engine) trackerOptions() tracker.Options {
+	return tracker.Options{
 		ReorderTolerance: e.cfg.ReorderTolerance,
 		StrictBestBidAsk: e.cfg.StrictBestBidAsk,
 		RESTOnly:         e.cfg.RESTOnly,
 	}
+}
+
+// newTrackers builds one tracker per requested token, for the rest-only path
+// which has no shards.
+func (e *Engine) newTrackers() map[string]*tracker.Tracker {
+	opts := e.trackerOptions()
 
 	trackers := make(map[string]*tracker.Tracker, len(e.tokens.IDs))
 	for _, id := range e.tokens.IDs {
@@ -124,13 +172,8 @@ func (e *Engine) noteTokenListAnomalies() {
 	}
 }
 
-// finalize freezes every tracker and assembles the document.
-func (e *Engine) finalize(startedAt, finishedAt time.Time, trackers map[string]*tracker.Tracker) report.Document {
-	snapshots := make(map[string]tracker.Snapshot, len(trackers))
-	for id, t := range trackers {
-		snapshots[id] = t.Finalize(finishedAt)
-	}
-
+// finalizeDocument assembles the output from the collected snapshots.
+func (e *Engine) finalizeDocument(startedAt, finishedAt time.Time, snapshots map[string]tracker.Snapshot) report.Document {
 	return report.Build(report.Input{
 		StartedAt:  startedAt,
 		FinishedAt: finishedAt,
@@ -138,9 +181,28 @@ func (e *Engine) finalize(startedAt, finishedAt time.Time, trackers map[string]*
 		Requested:  e.tokens.IDs,
 		Snapshots:  snapshots,
 		Connection: report.Connection{
-			RESTRequests: e.rest.Requests(),
-			RESTResyncs:  e.restSeeded,
+			WSConnections: len(e.shards),
+			Reconnects:    int(e.reconnects.Load()),
+			RESTRequests:  e.rest.Requests(),
+			RESTResyncs:   int(e.restResyncs.Load()) + e.restSeeded,
 		},
 		Errors: e.errors.Messages(),
 	})
+}
+
+// startWatchdog arms the only hard guarantee that the process ends on time.
+//
+// Everything else in the shutdown path is cooperative, and cooperation is not
+// something a goroutine stuck in a syscall can offer. If this fires, no output
+// document has been written, which is the correct outcome: a run that overran
+// its budget has not produced trustworthy data and must not look as though it
+// has.
+func (e *Engine) startWatchdog(budget config.Budget) func() {
+	timer := time.AfterFunc(budget.HardStop, func() {
+		e.logger.Error("the run did not shut down within its budget; terminating",
+			"budget", budget.HardStop)
+		e.halt()
+	})
+
+	return func() { timer.Stop() }
 }
