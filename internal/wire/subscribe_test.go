@@ -30,7 +30,6 @@ func TestSubscriptionUpdateShape(t *testing.T) {
 		want   string
 	}{
 		{"subscribe", Subscribe([]string{"333"}), `{"operation":"subscribe","assets_ids":["333"]}`},
-		{"unsubscribe", Unsubscribe([]string{"333"}), `{"operation":"unsubscribe","assets_ids":["333"]}`},
 	}
 
 	for _, tt := range tests {

@@ -8,10 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- A scale test at 400 tokens, which is the size the consuming agent uses and the
+  first case that produces more than one connection, and a test that memory does
+  not grow with the number of updates received.
+
 ### Changed
 ### Deprecated
+
 ### Removed
+- The unused unsubscribe message builder. The protocol defines the operation but
+  this build does not send it.
+
 ### Fixed
+- Mid-window discovery no longer switches itself off when the token list exactly
+  fills a connection, which was the case at the consuming agent's documented
+  configuration of 400 tokens.
+
 ### Security
 
 ## [0.1.0] - 2026-08-14

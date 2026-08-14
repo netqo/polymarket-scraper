@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/netqo/polymarket-scraper/internal/config"
 	"github.com/netqo/polymarket-scraper/internal/testsupport"
 	"github.com/netqo/polymarket-scraper/internal/tokenlist"
 	"github.com/netqo/polymarket-scraper/internal/tracker"
@@ -77,24 +78,45 @@ func TestDiscoveryStopsAtTheLimit(t *testing.T) {
 	}
 }
 
-// Filling a connection past the width where it stops sending snapshots would
-// quietly cost the tokens that were actually requested.
-func TestDiscoveryStopsAtTheConnectionWidth(t *testing.T) {
-	engine := engineForDiscovery(t, 100)
-	engine.cfg.MaxAssetsPerConnection = 2
+// A connection still has a hard ceiling: past roughly 750 assets the server
+// accepts the subscription and silently stops sending snapshots. Announced
+// tokens must not push a connection over it, because doing so would cost the
+// tokens that were actually requested.
+func TestDiscoveryStopsAtTheConnectionCeiling(t *testing.T) {
+	rest := testsupport.NewFakeREST(t)
 
-	shard := newShardState(0, []string{"111"}, tracker.Options{})
+	cfg := websocketConfig("ws://127.0.0.1:1/none", rest.URL())
+	// Wide enough that the width plus the discovery budget exceeds the ceiling,
+	// so the ceiling is what binds rather than the budget.
+	cfg.MaxAssetsPerConnection = config.MaxAssetsCeiling - 50
+	cfg.DiscoverLimit = 100
 
-	engine.admitAnnounced(shard, wire.NewMarket{
-		ID:       "1",
-		AssetIDs: wire.StringList{"a", "b", "c"},
-	}, time.Now())
+	ids := scaleIDs(cfg.MaxAssetsPerConnection)
 
-	if got := len(shard.trackers); got > 2 {
-		t.Errorf("the shard holds %d tokens, want no more than its width of 2", got)
+	engine, err := New(Options{Config: cfg, Tokens: tokenlist.List{IDs: ids}})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
 	}
-	if !mentions(engine.errors.Messages(), "width limit") {
-		t.Errorf("errors = %v, want the width limit recorded", engine.errors.Messages())
+	engine.buildShards()
+	shard := engine.shards[0]
+
+	// Ask for more than the remaining headroom.
+	announced := make(wire.StringList, 0, 80)
+	for i := range 80 {
+		announced = append(announced, "announced-"+strconv.Itoa(i))
+	}
+	engine.admitAnnounced(shard, wire.NewMarket{ID: "1", AssetIDs: announced}, time.Now())
+
+	if len(shard.trackers) > config.MaxAssetsCeiling {
+		t.Errorf("the shard holds %d assets, past the ceiling of %d",
+			len(shard.trackers), config.MaxAssetsCeiling)
+	}
+	if len(shard.discovered) != 50 {
+		t.Errorf("took on %d announced tokens, want the 50 of headroom below the ceiling",
+			len(shard.discovered))
+	}
+	if !mentions(engine.errors.Messages(), "ceiling") {
+		t.Errorf("errors = %v, want the ceiling recorded", engine.errors.Messages())
 	}
 }
 
@@ -181,4 +203,40 @@ func engineForDiscovery(t *testing.T, limit int) *Engine {
 	}
 
 	return engine
+}
+
+// The consuming agent's documented configuration asks for 400 tokens, and the
+// default connection width is also 400, so a full shortlist fills a connection
+// exactly. Discovery must still work there: the short-duration series it exists
+// for is that agent's most time-sensitive case, and a feature that switches
+// itself off at the default configuration is not a feature.
+func TestDiscoveryStillWorksOnAFullShortlist(t *testing.T) {
+	rest := testsupport.NewFakeREST(t)
+
+	cfg := websocketConfig("ws://127.0.0.1:1/none", rest.URL())
+	cfg.MaxAssetsPerConnection = config.DefaultMaxAssetsPerConnection
+	cfg.DiscoverLimit = config.DefaultDiscoverLimit
+
+	ids := scaleIDs(cfg.MaxAssetsPerConnection)
+
+	engine, err := New(Options{Config: cfg, Tokens: tokenlist.List{IDs: ids}})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	engine.buildShards()
+
+	if len(engine.shards) != 1 {
+		t.Fatalf("got %d shards, want 1 at exactly the connection width", len(engine.shards))
+	}
+	shard := engine.shards[0]
+
+	engine.admitAnnounced(shard, wire.NewMarket{
+		ID:       "1",
+		AssetIDs: wire.StringList{"announced-a", "announced-b"},
+	}, time.Now())
+
+	if len(shard.discovered) != 2 {
+		t.Fatalf("took on %d announced tokens on a full shortlist, want 2. errors: %v",
+			len(shard.discovered), engine.errors.Messages())
+	}
 }
