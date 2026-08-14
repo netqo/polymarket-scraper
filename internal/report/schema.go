@@ -160,8 +160,13 @@ type Resolved struct {
 	ReceivedAt     string   `json:"received_at"`
 }
 
-// formatTime renders a scraper-generated timestamp.
-func formatTime(t time.Time) string {
+// FormatTime renders a scraper-generated timestamp.
+//
+// It is exported so that everything producing a timestamp for the document goes
+// through one place. Two spellings of the same convention would eventually
+// diverge, and a consumer parsing the result would have no way to tell which it
+// was looking at.
+func FormatTime(t time.Time) string {
 	return t.UTC().Format(TimeFormat)
 }
 
@@ -172,7 +177,7 @@ func optionalTime(t time.Time) *string {
 		return nil
 	}
 
-	formatted := formatTime(t)
+	formatted := FormatTime(t)
 
 	return &formatted
 }

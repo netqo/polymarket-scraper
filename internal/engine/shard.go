@@ -71,6 +71,12 @@ type shardState struct {
 	// trackers is read and written only by the apply goroutine.
 	trackers map[string]*tracker.Tracker
 
+	// discovered names the tokens picked up from announcements rather than
+	// requested, and closedToDiscovery records that the shard has stopped
+	// accepting more. Both belong to the apply goroutine alone.
+	discovered        map[string]bool
+	closedToDiscovery bool
+
 	// conn is the live connection, replaced on every reconnect, so a
 	// subscription change can find the current one.
 	conn atomic.Pointer[wsclient.Shard]
@@ -84,11 +90,12 @@ func newShardState(id int, assetIDs []string, opts tracker.Options) *shardState 
 	}
 
 	return &shardState{
-		id:       id,
-		assetIDs: assetIDs,
-		frames:   make(chan wsclient.Frame, frameBuffer),
-		control:  make(chan control, controlBuffer),
-		trackers: trackers,
+		id:         id,
+		assetIDs:   assetIDs,
+		frames:     make(chan wsclient.Frame, frameBuffer),
+		control:    make(chan control, controlBuffer),
+		trackers:   trackers,
+		discovered: make(map[string]bool),
 	}
 }
 

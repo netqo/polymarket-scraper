@@ -54,6 +54,10 @@ acceptance check in the conformance specification passes.
   watchdog that terminates a run which will not stop.
 - Connection sharding, so a token list wider than one subscription is split
   across connections rather than silently truncated.
+- Market announcements and resolutions are reported in the document's `events`
+  block, deduplicated across connections.
+- Tokens announced mid-window are subscribed to and reported, bounded by
+  `--discover-limit` and by the width of the connection.
 
 ### Changed
 - `make test` and the CI test gate now run under the race detector.
