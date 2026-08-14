@@ -45,8 +45,8 @@ type Input struct {
 func Build(in Input) Document {
 	doc := Document{
 		SchemaVersion:   SchemaVersion,
-		StartedAt:       formatTime(in.StartedAt),
-		FinishedAt:      formatTime(in.FinishedAt),
+		StartedAt:       FormatTime(in.StartedAt),
+		FinishedAt:      FormatTime(in.FinishedAt),
 		WindowSeconds:   int(math.Round(in.Window.Seconds())),
 		TokensRequested: len(in.Requested),
 		Connection:      in.Connection,

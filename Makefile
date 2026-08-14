@@ -32,7 +32,7 @@ clean: ## Remove build artifacts
 
 # Go targets (tools pinned by nix/flakes/go.nix). build/test/lint/fmt mirror the
 # CI gates in github-workflows/gates/go.yml.
-.PHONY: build test test-live lint fmt vuln watch mocks
+.PHONY: build test test-live acceptance-kill lint fmt vuln watch mocks
 
 build: ## Build all packages
 	go build ./...
@@ -50,7 +50,14 @@ test: ## Run tests under the race detector
 test-live: ## Run the //go:build live acceptance tests against the real API
 	@test -n "$$POLYMARKET_LIVE_TOKENS" || \
 		{ echo "set POLYMARKET_LIVE_TOKENS to a token file first" >&2; exit 1; }
-	gotestsum -- -tags live -count=1 ./...
+	gotestsum -- -tags live -count=1 -timeout 10m ./...
+
+# Kills the process with SIGKILL through a run and checks that the output path
+# is never observed truncated. SIGTERM is handled and would prove nothing; the
+# uncatchable signal is what tests the filesystem-level guarantee.
+acceptance-kill: ## Check that a killed run never leaves a partial document
+	nix build .#default -o result-bin
+	BINARY=./result-bin/bin/polymarket-scraper scripts/acceptance-kill.sh
 
 lint: ## CI gates: gofmt diff, go vet, golangci-lint
 	@test -z "$$(gofmt -l .)" || { echo "gofmt diff in:" >&2; gofmt -l . >&2; exit 1; }

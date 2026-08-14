@@ -47,6 +47,11 @@ func websocketConfig(wsURL, restURL string) config.Config {
 	return cfg
 }
 
+// tokenListOf builds a token list for a test.
+func tokenListOf(ids ...string) tokenlist.List {
+	return tokenlist.List{IDs: ids}
+}
+
 // collectOver runs a full websocket collection and returns the document.
 func collectOver(t *testing.T, ws *testsupport.FakeWS, rest *testsupport.FakeREST, ids ...string) report.Document {
 	t.Helper()

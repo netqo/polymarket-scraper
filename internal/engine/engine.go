@@ -58,9 +58,17 @@ type Engine struct {
 
 	rest   *restclient.Client
 	errors *errorSink
+	events *eventLog
 
 	shards []*shardState
 	resync chan resyncRequest
+
+	// requested is the set of tokens the run was asked for, which is what the
+	// completeness guarantee is measured against.
+	requested map[string]bool
+
+	// discovered counts tokens taken on from announcements, across all shards.
+	discovered atomic.Int64
 
 	reconnects  atomic.Int64
 	restResyncs atomic.Int64
@@ -107,9 +115,11 @@ func New(opts Options) (*Engine, error) {
 		halt:       halt,
 		rest:       rest,
 		errors:     &errorSink{},
+		events:     newEventLog(),
 		// Sized so every token can have a re-seed outstanding at once, which
 		// is exactly what a disconnect produces.
-		resync: make(chan resyncRequest, len(opts.Tokens.IDs)+resyncWorkers),
+		resync:    make(chan resyncRequest, len(opts.Tokens.IDs)+resyncWorkers),
+		requested: requestedSet(opts.Tokens.IDs),
 	}, nil
 }
 
@@ -174,20 +184,41 @@ func (e *Engine) noteTokenListAnomalies() {
 
 // finalizeDocument assembles the output from the collected snapshots.
 func (e *Engine) finalizeDocument(startedAt, finishedAt time.Time, snapshots map[string]tracker.Snapshot) report.Document {
+	// A truncated list that does not say it was truncated reads as a complete
+	// one, which is the sort of quiet inaccuracy this document exists to avoid.
+	if dropped := e.events.suppressedCount(); dropped > 0 {
+		e.errors.Addf("%d announcements were not reported: the run hit the cap of %d per list",
+			dropped, maxEvents)
+	}
+
+	requested, discovered := e.splitDiscovered(snapshots)
+
 	return report.Build(report.Input{
 		StartedAt:  startedAt,
 		FinishedAt: finishedAt,
 		Window:     e.cfg.CollectWindow(len(e.tokens.IDs)),
 		Requested:  e.tokens.IDs,
-		Snapshots:  snapshots,
+		Snapshots:  requested,
+		Discovered: discovered,
 		Connection: report.Connection{
 			WSConnections: len(e.shards),
 			Reconnects:    int(e.reconnects.Load()),
 			RESTRequests:  e.rest.Requests(),
 			RESTResyncs:   int(e.restResyncs.Load()) + e.restSeeded,
 		},
+		Events: e.events.events(),
 		Errors: e.errors.Messages(),
 	})
+}
+
+// requestedSet indexes the token list for membership tests.
+func requestedSet(ids []string) map[string]bool {
+	set := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		set[id] = true
+	}
+
+	return set
 }
 
 // startWatchdog arms the only hard guarantee that the process ends on time.

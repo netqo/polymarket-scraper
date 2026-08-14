@@ -63,16 +63,25 @@ consuming agent's prompt.
 ## Quality
 
 ```bash
-make fmt          # format
-make lint         # gofmt diff, go vet, golangci-lint (fails on findings)
-make test         # offline test suite, no network
-make test-live    # //go:build live tests against the real API, manual gate
-make image        # build the release container image from Nix
+make fmt             # format
+make lint            # gofmt diff, go vet, golangci-lint (fails on findings)
+make test            # offline suite under the race detector, no network
+make test-live       # //go:build live tests against the real API, manual gate
+make acceptance-kill # SIGKILL a run repeatedly, check the output is never partial
+make image           # build the release container image from Nix
 ```
 
-CI runs the same gates and fails on any formatter diff. The live tests never run
-in CI: they reach the real Polymarket API and skip themselves unless
-`POLYMARKET_LIVE_TOKENS` is set.
+CI runs `lint` and `test` and fails on any formatter diff. The test suite runs
+under the race detector, because a data race in book state would corrupt one
+token's book while every other signal stayed green.
+
+The other two are manual gates. `test-live` reaches the real Polymarket API and
+skips itself unless `POLYMARKET_LIVE_TOKENS` names a token file; it exists
+because the offline suite can only prove the scraper behaves as designed against
+a server that behaves as expected, and every expensive surprise so far has been
+a place where the exchange differs from its own documentation.
+`acceptance-kill` kills the process with SIGKILL at a spread of moments through
+a run and checks that the output path is never observed truncated.
 
 ## Conventions
 

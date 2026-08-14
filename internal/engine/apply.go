@@ -163,6 +163,7 @@ func (e *Engine) applyEvent(s *shardState, event wire.Event, at time.Time) {
 		})
 
 	case wire.MarketResolved:
+		e.events.noteResolved(typed, at)
 		for _, assetID := range typed.AssetIDs {
 			e.withTracker(s, assetID, func(t *tracker.Tracker) tracker.Effect {
 				return t.NoteMarketResolved()
@@ -170,9 +171,14 @@ func (e *Engine) applyEvent(s *shardState, event wire.Event, at time.Time) {
 		}
 
 	case wire.NewMarket:
-		// Announcements are global rather than filtered to this subscription,
-		// so they concern no token this shard owns. Reporting them is handled
-		// separately.
+		// The announcement feed is global rather than filtered to this
+		// subscription, so this concerns no token the shard owns. It is
+		// reported anyway: a consumer sweeping for freshly created markets
+		// depends on it, and every shard sees the same feed, which is why the
+		// log deduplicates.
+		if firstSighting := e.events.noteNewMarket(typed, at); firstSighting {
+			e.admitAnnounced(s, typed, at)
+		}
 
 	case wire.Unknown:
 		e.errors.Addf("shard %d: ignored an event type this build does not know: %s", s.id, typed.EventType)
@@ -221,6 +227,7 @@ func (e *Engine) applyControl(s *shardState, msg control) {
 		})
 
 	case ctrlSweep:
+		s.closeDiscovery()
 		for _, t := range s.trackers {
 			e.act(s, t, t.Sweep())
 		}

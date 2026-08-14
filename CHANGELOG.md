@@ -54,6 +54,14 @@ acceptance check in the conformance specification passes.
   watchdog that terminates a run which will not stop.
 - Connection sharding, so a token list wider than one subscription is split
   across connections rather than silently truncated.
+- Market announcements and resolutions are reported in the document's `events`
+  block, deduplicated across connections.
+- Tokens announced mid-window are subscribed to and reported, bounded by
+  `--discover-limit` and by the width of the connection.
+- `make acceptance-kill`, which SIGKILLs a run at a spread of moments and checks
+  the output path is never observed truncated, and refuses to pass if no kill
+  landed after a completed write.
+- A `//go:build live` acceptance suite run by hand against the real exchange.
 
 ### Changed
 - `make test` and the CI test gate now run under the race detector.
