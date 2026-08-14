@@ -14,9 +14,9 @@ let
     # build is reproducible and does not rebuild on every commit.
     src = pkgs.lib.cleanSource ../.;
 
-    # No external module dependencies yet. When the first one lands in go.mod,
-    # replace this with the vendor hash Nix prints on the first failing build.
-    vendorHash = null;
+    # Pins the dependency tree by content. It changes whenever go.mod or go.sum
+    # does; Nix prints the expected value when it does not match.
+    vendorHash = "sha256-EjtSGsxJoJHTOczcZ+B3x6bhY56MqKDEiP0t/QAMwMQ=";
 
     subPackages = [ "cmd/polymarket-scraper" ];
 

@@ -1,13 +1,18 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/netqo/polymarket-scraper/internal/config"
+	"github.com/netqo/polymarket-scraper/internal/engine"
+	"github.com/netqo/polymarket-scraper/internal/report"
 	"github.com/netqo/polymarket-scraper/internal/tokenlist"
 )
 
@@ -52,15 +57,36 @@ func run(args []string, stdout, stderr io.Writer) int {
 		logger.Error("cannot read the token list", "path", cfg.TokensPath, "error", err)
 		return exitUsage
 	}
-
 	logTokenListAnomalies(logger, tokens)
 
-	// TODO(phase-5): hand the token list and configuration to the engine.
-	logger.Error("collection is not implemented yet",
-		"tokens", len(tokens.IDs),
-		"detail", "this build parses its configuration and token list; the collector lands in a later change")
+	collector, err := engine.New(engine.Options{Config: cfg, Tokens: tokens, Logger: logger})
+	if err != nil {
+		logger.Error("cannot start the collector", "error", err)
+		return exitUsage
+	}
 
-	return exitFailed
+	// A run that is interrupted still writes an honest document rather than
+	// nothing: the tokens it did not reach say so in their own status, which is
+	// more useful to a consumer than an empty output path.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	document, err := collector.Run(ctx)
+	if err != nil {
+		logger.Error("the run failed", "error", err)
+		return exitFailed
+	}
+
+	if err := report.WriteAtomic(cfg.OutPath, document); err != nil {
+		logger.Error("cannot write the output document", "path", cfg.OutPath, "error", err)
+		return exitFailed
+	}
+
+	// The summary line goes to stdout only here, on the success path, which is
+	// what makes non-empty stdout a reliable success signal on its own.
+	fmt.Fprintln(stdout, report.SummaryLine(document, cfg.OutPath))
+
+	return exitOK
 }
 
 // logTokenListAnomalies reports what was odd about the token list.
