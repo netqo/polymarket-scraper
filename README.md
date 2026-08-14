@@ -22,8 +22,7 @@ untrusted until it has been re-seeded, and if re-seeding fails the token is
 reported as `resync_failed` rather than having its pre-gap book passed off as
 fresh. A silently stale book turns directly into a fake arbitrage signal.
 
-Status: under construction. `--rest-only` works end to end today; the websocket
-collector is still being built.
+Status: released, v0.1.0. The output contract is frozen at `schema_version` 1.0.
 
 ## Build / Configuration
 
@@ -112,20 +111,6 @@ except where noted here, and each deviation is deliberate.
   hidden.
 - **E2 (~10 requests/second).** Kept as the default for politeness, but it is
   far below Polymarket's documented limits, so it is exposed as `--rest-rate`.
-
-## Roadmap
-
-- [ ] Value types, token list loading, flags and shutdown budget
-- [ ] Protocol decoding and the order book
-- [ ] Per-token resync state machine
-- [ ] Output document and `SCHEMA.md`
-- [ ] REST client and `--rest-only` mode
-- [ ] Websocket transport
-- [ ] Engine, reconnection and deterministic shutdown
-- [ ] Connection sharding
-- [ ] Event capture and error reporting
-- [ ] Dynamic mid-window subscription
-- [ ] Acceptance suite and v0.1.0
 
 ## License
 
