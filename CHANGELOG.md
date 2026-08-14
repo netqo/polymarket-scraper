@@ -24,6 +24,15 @@ acceptance check in the conformance specification passes.
   dropped, so they can fail visibly instead of vanishing.
 - `internal/config`: the full flag set, the hand-written `--help` text, and the
   shutdown timeline as a pure function of the window and grace period.
+- `internal/book`: a two-sided order book that sorts on ingest rather than
+  trusting the wire order, keeps both sides in output order at all times, and
+  treats a size of zero as removing a level rather than zeroing it.
+- `internal/wire`: decoding for every market channel event in both the object
+  and array framings, the subscription messages, and the REST book response,
+  with unknown event types and unknown fields tolerated rather than fatal.
+- `internal/tracker`: the per-token trust state machine, which keeps a book out
+  of the output entirely unless it is current, plus constant-space volatility
+  statistics over the collection window.
 
 ### Changed
 ### Deprecated
