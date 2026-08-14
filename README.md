@@ -22,8 +22,7 @@ untrusted until it has been re-seeded, and if re-seeding fails the token is
 reported as `resync_failed` rather than having its pre-gap book passed off as
 fresh. A silently stale book turns directly into a fake arbitrage signal.
 
-Status: under construction. See `docs/DESIGN.md` for the architecture and
-`docs/spec/scraper-requirements.md` for the conformance spec this implements.
+Status: under construction.
 
 ## Build / Configuration
 
@@ -80,16 +79,14 @@ in CI: they reach the real Polymarket API and skip themselves unless
   receives tagged release merges, and PRs to `dev` need green CI.
 - Dependencies pinned exactly; `go.sum` and `flake.lock` committed.
 - Structured logging with `log/slog`, text handler, always to stderr.
-- ASCII-only in code, comments, and commit messages. The files under
-  `docs/spec/` are verbatim copies of the upstream specification and keep their
-  original typography.
+- ASCII-only in code, comments, and commit messages.
 - Nix builds, Docker runs: the release image is produced by `nix build`, and
   there is no Dockerfile.
 
 ## Deviations from the spec
 
-The conformance spec in `docs/spec/scraper-requirements.md` is followed except
-where noted here. Each deviation is deliberate.
+The scraper is built against a written conformance specification. It is followed
+except where noted here, and each deviation is deliberate.
 
 - **F5 (single-file Python or Node script).** Implemented in Go instead. F5's
   stated intent is "boring, pinned dependencies... simple beats clever when it

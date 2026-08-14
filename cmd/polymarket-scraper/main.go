@@ -8,7 +8,7 @@
 // as current really is current, and everything else is reported as an explicit
 // failure rather than silently passed off as fresh data.
 //
-// See SCHEMA.md for the output contract and docs/DESIGN.md for the design.
+// See SCHEMA.md for the output contract.
 package main
 
 import "os"
