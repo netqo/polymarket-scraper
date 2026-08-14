@@ -16,6 +16,14 @@ acceptance check in the conformance specification passes.
 - Nix package and release container image built from the same pinned toolchain
   as the devShell, replacing the scaffold's placeholder toolchain image.
 - CLI entry point with `--version`, structured logging to stderr via `slog`.
+- `internal/decimal`: a value type that keeps the API's decimal text byte for
+  byte while exposing a fixed-point integer for comparison only, so no price or
+  size can pick up a floating-point artifact on its way through the scraper.
+- `internal/tokenlist`: token file loading in both supported formats, with
+  duplicates collapsed once at the source and malformed ids kept rather than
+  dropped, so they can fail visibly instead of vanishing.
+- `internal/config`: the full flag set, the hand-written `--help` text, and the
+  shutdown timeline as a pure function of the window and grace period.
 
 ### Changed
 ### Deprecated
