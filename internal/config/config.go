@@ -54,7 +54,13 @@ const (
 	// dangerous one: the socket stays open and keeps delivering deltas, so a
 	// client that does not check looks healthy while holding no book state.
 	DefaultMaxAssetsPerConnection = 400
-	maxAssetsPerConnection        = 700
+
+	// MaxAssetsCeiling is how wide a connection may get in total, which is a
+	// different number from the width above. That one decides how the requested
+	// tokens are spread across connections; this one is the point past which
+	// the server stops honouring the subscription, so it is what bounds a
+	// connection that later takes on announced tokens as well.
+	MaxAssetsCeiling = 700
 
 	// DefaultPingInterval matches the documented keepalive cadence. The frame
 	// is the literal text "PING", not a websocket protocol ping.
@@ -174,8 +180,8 @@ func (c Config) Validate() error {
 		return fmt.Errorf("--rest-batch-size must be between 1 and %d, got %d: the endpoint rejects larger payloads", maxRESTBatchSize, c.RESTBatchSize)
 	}
 
-	if c.MaxAssetsPerConnection < 1 || c.MaxAssetsPerConnection > maxAssetsPerConnection {
-		return fmt.Errorf("--max-assets-per-connection must be between 1 and %d, got %d: past that the server stops sending the initial snapshot without reporting an error", maxAssetsPerConnection, c.MaxAssetsPerConnection)
+	if c.MaxAssetsPerConnection < 1 || c.MaxAssetsPerConnection > MaxAssetsCeiling {
+		return fmt.Errorf("--max-assets-per-connection must be between 1 and %d, got %d: past that the server stops sending the initial snapshot without reporting an error", MaxAssetsCeiling, c.MaxAssetsPerConnection)
 	}
 	if c.PingInterval <= 0 {
 		return fmt.Errorf("--ping-interval must be positive, got %v", c.PingInterval)
