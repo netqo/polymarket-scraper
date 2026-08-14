@@ -36,6 +36,13 @@ acceptance check in the conformance specification passes.
 - `internal/report` and `SCHEMA.md`: the output contract at `schema_version`
   1.0, with the atomic write, the stdout summary line, and tests that hold the
   documentation and the code to each other.
+- `internal/restclient`: batched and single book fetches, paced by a shared
+  limiter, with bounded retries and a distinct answer for a token the exchange
+  does not recognise.
+- `internal/testsupport`: an in-process stand-in for the REST endpoints, so the
+  suite never touches the network.
+- `--rest-only` collection end to end. The binary now produces a real output
+  document.
 
 ### Changed
 ### Deprecated

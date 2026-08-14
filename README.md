@@ -22,7 +22,8 @@ untrusted until it has been re-seeded, and if re-seeding fails the token is
 reported as `resync_failed` rather than having its pre-gap book passed off as
 fresh. A silently stale book turns directly into a fake arbitrage signal.
 
-Status: under construction.
+Status: under construction. `--rest-only` works end to end today; the websocket
+collector is still being built.
 
 ## Build / Configuration
 
