@@ -5,72 +5,76 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-Nothing has been released yet. The first release will be v0.1.0, cut once every
-acceptance check in the conformance specification passes.
-
 ## [Unreleased]
 
 ### Added
-- Project scaffold: pinned Nix devShell, Makefile, golangci-lint v2
-  configuration, CI workflow, PR and issue templates, CODEOWNERS.
-- Nix package and release container image built from the same pinned toolchain
-  as the devShell, replacing the scaffold's placeholder toolchain image.
-- CLI entry point with `--version`, structured logging to stderr via `slog`.
-- `internal/decimal`: a value type that keeps the API's decimal text byte for
-  byte while exposing a fixed-point integer for comparison only, so no price or
-  size can pick up a floating-point artifact on its way through the scraper.
-- `internal/tokenlist`: token file loading in both supported formats, with
-  duplicates collapsed once at the source and malformed ids kept rather than
-  dropped, so they can fail visibly instead of vanishing.
-- `internal/config`: the full flag set, the hand-written `--help` text, and the
-  shutdown timeline as a pure function of the window and grace period.
-- `internal/book`: a two-sided order book that sorts on ingest rather than
-  trusting the wire order, keeps both sides in output order at all times, and
-  treats a size of zero as removing a level rather than zeroing it.
-- `internal/wire`: decoding for every market channel event in both the object
-  and array framings, the subscription messages, and the REST book response,
-  with unknown event types and unknown fields tolerated rather than fatal.
-- `internal/tracker`: the per-token trust state machine, which keeps a book out
-  of the output entirely unless it is current, plus constant-space volatility
-  statistics over the collection window.
-- `internal/report` and `SCHEMA.md`: the output contract at `schema_version`
-  1.0, with the atomic write, the stdout summary line, and tests that hold the
-  documentation and the code to each other.
-- `internal/restclient`: batched and single book fetches, paced by a shared
-  limiter, with bounded retries and a distinct answer for a token the exchange
-  does not recognise.
-- `internal/testsupport`: an in-process stand-in for the REST endpoints, so the
-  suite never touches the network.
-- `--rest-only` collection end to end. The binary now produces a real output
-  document.
-- `internal/wsclient`: one websocket connection, with the literal-text
-  keepalive, the byte-exact subscription, per-read idle detection, and a count
-  of snapshots received so a silently incomplete subscription is visible.
-- A scripted fake market channel in `internal/testsupport`, able to drop a
-  connection, go silent, or accept a subscription and never answer it.
-
-- Websocket collection end to end: reconnection, per-shard single-writer book
-  state, batched re-seeding, the deterministic shutdown timeline, and the
-  watchdog that terminates a run which will not stop.
-- Connection sharding, so a token list wider than one subscription is split
-  across connections rather than silently truncated.
-- Market announcements and resolutions are reported in the document's `events`
-  block, deduplicated across connections.
-- Tokens announced mid-window are subscribed to and reported, bounded by
-  `--discover-limit` and by the width of the connection.
-- `make acceptance-kill`, which SIGKILLs a run at a spread of moments and checks
-  the output path is never observed truncated, and refuses to pass if no kill
-  landed after a completed write.
-- A `//go:build live` acceptance suite run by hand against the real exchange.
-
 ### Changed
-- `make test` and the CI test gate now run under the race detector.
-- The drain after a collection window ends as soon as no REST work is
-  outstanding, rather than always waiting its full allowance.
-
 ### Deprecated
 ### Removed
 ### Fixed
 ### Security
 
-[Unreleased]: https://github.com/netqo/polymarket-scraper/commits/dev
+## [0.1.0] - 2026-08-14
+
+First release. Output contract frozen at `schema_version` 1.0.
+
+### Added
+
+- Collect live Polymarket order books for a list of outcome tokens over a fixed
+  window, and write one JSON document describing every token that was asked
+  about. Read-only and credential-free throughout.
+- **Trust guarantees.** A book is never reported as current unless it is. After
+  a disconnect, a decode failure, or an update far enough out of order to
+  suggest something was missed, the token is re-seeded; if that fails it is
+  reported as `resync_failed` with an empty book rather than having its pre-gap
+  book presented as fresh.
+- **Every requested token appears exactly once**, with an explicit status,
+  whatever went wrong during the run. An empty book on a live token is a
+  success, not a failure, and the two are distinguishable.
+- **Values are passed through as the exchange's own decimal strings**, byte for
+  byte. Statistics the scraper computes itself are produced by integer
+  arithmetic. There is no floating-point number anywhere in the document.
+- **The write is atomic.** The output path holds either the previous run's
+  document or this one's, never a fragment.
+- **Bounded runtime.** The process ends within its window plus a grace period
+  whatever the network does, with a watchdog behind the cooperative shutdown.
+- Connection sharding, reconnection with backoff, and batched re-seeding, so a
+  disconnect that distrusts every token at once recovers in a couple of requests
+  rather than one per token.
+- `--rest-only` mode, which skips the websocket entirely and snapshots every
+  token over REST.
+- Market announcements and resolutions reported in the document's `events`
+  block, and tokens announced mid-window subscribed to and collected, which is
+  what makes a run useful during the short-duration crypto series.
+- Per-token volatility context over the window: update count, mid-price range,
+  and a spread averaged over the time the book actually had two sides.
+- `SCHEMA.md`, the output contract, held to the code by tests in both
+  directions.
+
+### Fixed
+
+Behaviour where the live API and its published documentation disagree. Each of
+these fails silently rather than loudly, and each was found by running against
+the exchange rather than by reading the specification.
+
+- **Book ordering.** The documentation states bids come back descending and asks
+  ascending. The live API does the exact opposite, on both REST and the
+  websocket, so reading the first element of either array gives the *worst*
+  price. Both sides are sorted on ingest and neither claim is trusted.
+- **Snapshot framing.** The initial book snapshot arrives as a JSON array
+  holding every subscribed asset in a single frame, while every other event is a
+  bare object. A decoder that assumes objects loses all of its initial state and
+  then looks healthy, because deltas keep arriving.
+- **Batched price changes.** The field is `price_changes`, the envelope carries
+  no asset id, and the best quotes ride on each element. One message routinely
+  covers both legs of a binary market.
+- **Silent subscribe ceiling.** Past roughly 750 assets the server accepts a
+  subscription, keeps delivering updates, and never sends the initial snapshot,
+  with no error. Snapshots received are counted and connections are sharded well
+  below that width.
+- **Keepalives are raw text.** `PING` and `PONG` are uppercase text frames, not
+  websocket protocol pings, and are recognised before anything tries to parse
+  them.
+
+[Unreleased]: https://github.com/netqo/polymarket-scraper/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/netqo/polymarket-scraper/releases/tag/v0.1.0
