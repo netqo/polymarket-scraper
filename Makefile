@@ -9,36 +9,55 @@
 # lint && make test` locally means a green pipeline.
 
 .DEFAULT_GOAL := help
-.PHONY: help dev build test lint fmt migrate run clean
+.PHONY: help dev run clean image
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
-		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
+		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
 dev: ## Enter the pinned dev shell
 	nix develop
 
-# migrate and run stay project-specific: they depend on the app's entrypoint and
-# migration tool. They fail loudly rather than printing a TODO and exiting 0,
-# so a half-configured project cannot look like a passing one.
-migrate: ## Apply database migrations (fill this in for the project)
-	@echo "migrate is not configured: edit the migrate target in the Makefile" >&2; exit 1
+# There is no `migrate` target: this project has no database. It reads public
+# market data and writes one JSON file.
 
-run: ## Run the app locally (fill this in for the project)
-	@echo "run is not configured: edit the run target in the Makefile" >&2; exit 1
+run: ## Run the scraper locally, e.g. make run ARGS="--tokens t.txt --duration 30 --out books.json"
+	go run ./cmd/polymarket-scraper $(ARGS)
+
+image: ## Build the release container image from Nix (never docker build)
+	nix build .#dockerImage
 
 clean: ## Remove build artifacts
 	rm -rf result result-* dist build target
 
 # Go targets (tools pinned by nix/flakes/go.nix). build/test/lint/fmt mirror the
 # CI gates in github-workflows/gates/go.yml.
-.PHONY: build test lint fmt vuln watch mocks
+.PHONY: build test test-live acceptance-kill lint fmt vuln watch mocks
 
 build: ## Build all packages
 	go build ./...
 
-test: ## Run tests (gotestsum wraps go test; GOTESTSUM_FORMAT set in the devShell)
-	gotestsum -- ./...
+# -race is not optional here. The collector runs a goroutine per connection and
+# per shard, and a data race in book state is exactly the kind of bug that
+# survives review, passes every run on a developer machine, and corrupts one
+# token's book in production.
+test: ## Run tests under the race detector
+	gotestsum -- -race ./...
+
+# Live tests reach the real Polymarket API and are a manual gate, never a CI
+# gate. They skip themselves unless POLYMARKET_LIVE_TOKENS points at a token
+# file. -count=1 defeats the test cache, which is meaningless for live data.
+test-live: ## Run the //go:build live acceptance tests against the real API
+	@test -n "$$POLYMARKET_LIVE_TOKENS" || \
+		{ echo "set POLYMARKET_LIVE_TOKENS to a token file first" >&2; exit 1; }
+	gotestsum -- -tags live -count=1 -timeout 10m ./...
+
+# Kills the process with SIGKILL through a run and checks that the output path
+# is never observed truncated. SIGTERM is handled and would prove nothing; the
+# uncatchable signal is what tests the filesystem-level guarantee.
+acceptance-kill: ## Check that a killed run never leaves a partial document
+	nix build .#default -o result-bin
+	BINARY=./result-bin/bin/polymarket-scraper scripts/acceptance-kill.sh
 
 lint: ## CI gates: gofmt diff, go vet, golangci-lint
 	@test -z "$$(gofmt -l .)" || { echo "gofmt diff in:" >&2; gofmt -l . >&2; exit 1; }

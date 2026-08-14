@@ -1,0 +1,120 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/netqo/polymarket-scraper/internal/config"
+	"github.com/netqo/polymarket-scraper/internal/engine"
+	"github.com/netqo/polymarket-scraper/internal/report"
+	"github.com/netqo/polymarket-scraper/internal/tokenlist"
+)
+
+// Process exit codes.
+//
+// Requirement A5 makes this contract binary for the consuming agent: 0 means
+// the output document was written and is valid, and any non-zero code means the
+// run failed and the output is unusable. Codes are added here as the paths that
+// return them are implemented, so there is never a documented code that nothing
+// can actually produce.
+const (
+	exitOK     = 0
+	exitFailed = 1
+	exitUsage  = 2
+
+	// exitWatchdog means the run would not shut down and the process had to be
+	// terminated. No output document exists at that point, which is the point:
+	// a run that overran its budget has not produced trustworthy data and must
+	// not look as though it has.
+	exitWatchdog = 3
+)
+
+// run is the real entry point: main does nothing but call it and exit, so that
+// deferred cleanup actually runs.
+func run(args []string, stdout, stderr io.Writer) int {
+	cfg, err := config.Parse(args, os.LookupEnv)
+	switch {
+	case errors.Is(err, config.ErrHelp):
+		fmt.Fprint(stdout, config.Usage())
+		return exitOK
+
+	case errors.Is(err, config.ErrVersion):
+		fmt.Fprintln(stdout, buildVersion())
+		return exitOK
+
+	case err != nil:
+		// Usage problems are reported as plain text rather than through the
+		// logger: they happen before logging is configured, and the reader is
+		// a person who just mistyped a flag.
+		fmt.Fprintf(stderr, "%s\n\nRun with --help for usage.\n", err)
+		return exitUsage
+	}
+
+	logger := newLogger(stderr, cfg.LogLevel)
+
+	tokens, err := tokenlist.Load(cfg.TokensPath)
+	if err != nil {
+		logger.Error("cannot read the token list", "path", cfg.TokensPath, "error", err)
+		return exitUsage
+	}
+	logTokenListAnomalies(logger, tokens)
+
+	collector, err := engine.New(engine.Options{
+		Config: cfg,
+		Tokens: tokens,
+		Logger: logger,
+		// The watchdog is the only hard guarantee that the process ends on
+		// time: a goroutine blocked in a syscall will never observe a cancelled
+		// context, so nothing short of terminating can be relied upon.
+		Halt: func() { os.Exit(exitWatchdog) },
+	})
+	if err != nil {
+		logger.Error("cannot start the collector", "error", err)
+		return exitUsage
+	}
+
+	// A run that is interrupted still writes an honest document rather than
+	// nothing: the tokens it did not reach say so in their own status, which is
+	// more useful to a consumer than an empty output path.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	document, err := collector.Run(ctx)
+	if err != nil {
+		logger.Error("the run failed", "error", err)
+		return exitFailed
+	}
+
+	if err := report.WriteAtomic(cfg.OutPath, document); err != nil {
+		logger.Error("cannot write the output document", "path", cfg.OutPath, "error", err)
+		return exitFailed
+	}
+
+	// The summary line goes to stdout only here, on the success path, which is
+	// what makes non-empty stdout a reliable success signal on its own.
+	fmt.Fprintln(stdout, report.SummaryLine(document, cfg.OutPath))
+
+	return exitOK
+}
+
+// logTokenListAnomalies reports what was odd about the token list.
+//
+// Neither condition is fatal. Duplicates are collapsed because requirement C4
+// wants each token reported exactly once, and an id that does not look like a
+// token id is still collected so that it can fail visibly rather than vanish.
+func logTokenListAnomalies(logger *slog.Logger, tokens tokenlist.List) {
+	if tokens.Duplicates > 0 {
+		logger.Warn("collapsed duplicate token ids",
+			"duplicates", tokens.Duplicates, "unique", len(tokens.IDs))
+	}
+	if len(tokens.Suspicious) > 0 {
+		logger.Warn("some ids do not look like token ids and will probably fail",
+			"count", len(tokens.Suspicious), "first", tokens.Suspicious[0])
+	}
+}
