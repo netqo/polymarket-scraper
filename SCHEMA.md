@@ -51,7 +51,7 @@ clocks agree.
 | `finished_at` | string | When the document was built. |
 | `window_seconds` | number | The configured collection window, in seconds. Not the same as `finished_at` minus `started_at`, which also includes shutdown. |
 | `tokens_requested` | number | How many distinct tokens were asked for. |
-| `tokens_ok` | number | How many entries in `books` have status `ok`. |
+| `tokens_ok` | number | How many of the **requested** tokens have status `ok`. Never more than `tokens_requested`, so `tokens_ok / tokens_requested` is a usable health ratio. Tokens the run picked up on its own are counted by `tokens_discovered` instead. |
 | `tokens_discovered` | number | How many tokens were added from announcements during the run. |
 | `connection` | object | How the data was obtained. |
 | `books` | object | Keyed by token id. Contains every requested token, and possibly more. |
