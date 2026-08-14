@@ -3,6 +3,8 @@ package engine
 import (
 	"time"
 
+	"github.com/netqo/polymarket-scraper/internal/config"
+
 	"github.com/netqo/polymarket-scraper/internal/tracker"
 	"github.com/netqo/polymarket-scraper/internal/wire"
 )
@@ -61,10 +63,10 @@ func (e *Engine) collectAdmissible(s *shardState, event wire.NewMarket) []string
 			continue
 		}
 
-		if len(s.trackers) >= e.cfg.MaxAssetsPerConnection {
+		if len(s.trackers) >= e.connectionCeiling() {
 			s.closedToDiscovery = true
-			e.errors.Addf("shard %d stopped taking announced tokens: the connection is at its width limit of %d",
-				s.id, e.cfg.MaxAssetsPerConnection)
+			e.errors.Addf("shard %d stopped taking announced tokens: the connection has reached its ceiling of %d assets",
+				s.id, e.connectionCeiling())
 			break
 		}
 
@@ -81,6 +83,23 @@ func (e *Engine) collectAdmissible(s *shardState, event wire.NewMarket) []string
 	}
 
 	return added
+}
+
+// connectionCeiling is how wide this run will let a connection get.
+//
+// It is deliberately not the width used to spread the requested tokens. Those
+// are two different questions, and conflating them meant that a shortlist
+// exactly filling a connection -- which is the consuming agent's documented
+// configuration -- switched discovery off entirely, on the run where it matters
+// most. The width decides how work is divided; this is the point past which the
+// server quietly stops honouring the subscription.
+func (e *Engine) connectionCeiling() int {
+	ceiling := e.cfg.MaxAssetsPerConnection + e.cfg.DiscoverLimit
+	if ceiling > config.MaxAssetsCeiling {
+		return config.MaxAssetsCeiling
+	}
+
+	return ceiling
 }
 
 // discoveredTrackerOptions mark a token as picked up rather than requested, so

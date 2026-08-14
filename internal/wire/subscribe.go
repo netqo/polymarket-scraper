@@ -5,11 +5,15 @@ package wire
 // is what keeps the tool credential-free.
 const Channel = "market"
 
-// Subscription operations for changing a live subscription.
-const (
-	OperationSubscribe   = "subscribe"
-	OperationUnsubscribe = "unsubscribe"
-)
+// OperationSubscribe adds assets to a live subscription.
+//
+// The protocol also defines an unsubscribe operation, which this build does not
+// send. Nothing needs it: a connection's width is bounded when tokens are taken
+// on rather than by giving them back, and a settled market's book simply stops
+// changing. Sending an operation that has never been exercised against the live
+// server, on the connection carrying the whole run, to save a trickle of
+// traffic would risk far more than it saves.
+const OperationSubscribe = "subscribe"
 
 // Subscription is the message that opens a subscription.
 //
@@ -43,9 +47,4 @@ type SubscriptionUpdate struct {
 // Subscribe builds an update that adds tokens to a live connection.
 func Subscribe(assetIDs []string) SubscriptionUpdate {
 	return SubscriptionUpdate{Operation: OperationSubscribe, AssetIDs: assetIDs}
-}
-
-// Unsubscribe builds an update that removes tokens from a live connection.
-func Unsubscribe(assetIDs []string) SubscriptionUpdate {
-	return SubscriptionUpdate{Operation: OperationUnsubscribe, AssetIDs: assetIDs}
 }
