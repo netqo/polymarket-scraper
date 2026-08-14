@@ -1,0 +1,53 @@
+# Copy to a project as .golangci.yml. golangci-lint is pinned by
+# nix/flakes/go.nix (v2 config schema; `golangci-lint migrate` converts a v1
+# file). CI gates: gofmt diff, go vet ./..., golangci-lint run, go test ./...
+#
+# errcheck, govet, ineffassign, staticcheck and unused are enabled by DEFAULT in
+# v2 and so are not repeated below; `enable` only adds to that set.
+version: "2"
+
+run:
+  tests: true
+  # Cold CI caches make the default timeout tight on a large module.
+  timeout: 5m
+
+linters:
+  enable:
+    - bodyclose
+    - gosec
+    - misspell
+    - nilerr
+    - revive
+    - unconvert
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # Test files trip gosec constantly (hardcoded creds in fixtures, etc.).
+      - linters:
+          - gosec
+        path: _test\.go
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+# gofmt/goimports moved out of `linters` into `formatters` in v2.
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
