@@ -92,26 +92,6 @@ a run and checks that the output path is never observed truncated.
 - Nix builds, Docker runs: the release image is produced by `nix build`, and
   there is no Dockerfile.
 
-## Deviations from the spec
-
-The scraper is built against a written conformance specification. It is followed
-except where noted here, and each deviation is deliberate.
-
-- **F5 (single-file Python or Node script).** Implemented in Go instead. F5's
-  stated intent is "boring, pinned dependencies... simple beats clever when it
-  breaks at 3am". A statically linked binary with a committed `go.sum` and a
-  Nix-pinned toolchain serves that intent better than a virtualenv, at the cost
-  of not being readable in a single file.
-- **D4 (monotonicity guard), read literally.** The feed carries no sequence
-  numbers, only a timestamp and a hash, so "if ordering cannot be established,
-  resync" would turn one server clock quirk into a resync storm across every
-  token at once. Instead: per-connection delivery order is authoritative, exact
-  duplicates are dropped, and timestamp regressions trigger a resync only beyond
-  `--reorder-tolerance` (default 5s). Smaller regressions are flagged, not
-  hidden.
-- **E2 (~10 requests/second).** Kept as the default for politeness, but it is
-  far below Polymarket's documented limits, so it is exposed as `--rest-rate`.
-
 ## License
 
 MIT. See `LICENSE`.
