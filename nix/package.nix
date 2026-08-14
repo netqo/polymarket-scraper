@@ -16,7 +16,7 @@ let
 
     # Pins the dependency tree by content. It changes whenever go.mod or go.sum
     # does; Nix prints the expected value when it does not match.
-    vendorHash = "sha256-EjtSGsxJoJHTOczcZ+B3x6bhY56MqKDEiP0t/QAMwMQ=";
+    vendorHash = "sha256-769Kwv41JVjc2QWPtIB556YqTqqZldztXlDdO0fi/VU=";
 
     subPackages = [ "cmd/polymarket-scraper" ];
 

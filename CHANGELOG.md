@@ -43,8 +43,15 @@ acceptance check in the conformance specification passes.
   suite never touches the network.
 - `--rest-only` collection end to end. The binary now produces a real output
   document.
+- `internal/wsclient`: one websocket connection, with the literal-text
+  keepalive, the byte-exact subscription, per-read idle detection, and a count
+  of snapshots received so a silently incomplete subscription is visible.
+- A scripted fake market channel in `internal/testsupport`, able to drop a
+  connection, go silent, or accept a subscription and never answer it.
 
 ### Changed
+- `make test` and the CI test gate now run under the race detector.
+
 ### Deprecated
 ### Removed
 ### Fixed
