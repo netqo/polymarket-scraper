@@ -37,8 +37,12 @@ clean: ## Remove build artifacts
 build: ## Build all packages
 	go build ./...
 
-test: ## Run tests (gotestsum wraps go test; GOTESTSUM_FORMAT set in the devShell)
-	gotestsum -- ./...
+# -race is not optional here. The collector runs a goroutine per connection and
+# per shard, and a data race in book state is exactly the kind of bug that
+# survives review, passes every run on a developer machine, and corrupts one
+# token's book in production.
+test: ## Run tests under the race detector
+	gotestsum -- -race ./...
 
 # Live tests reach the real Polymarket API and are a manual gate, never a CI
 # gate. They skip themselves unless POLYMARKET_LIVE_TOKENS points at a token
