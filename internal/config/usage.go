@@ -55,9 +55,10 @@ REST PACING
 
 WEBSOCKET
   --max-assets-per-connection N
-                    Sharding width. Default %[7]d. Past roughly 750 the server
-                    stops sending the initial snapshot without reporting an
-                    error, so this stays well below that.
+                    Sharding width: how the requested tokens are spread across
+                    connections. Default %[7]d, maximum %[15]d. Past roughly 750
+                    assets the server stops sending the initial snapshot without
+                    reporting an error, so the maximum stays below that.
   --ping-interval N Keepalive cadence. Default %[8]s.
   --idle-timeout N  Silence tolerated before a connection is treated as dead
                     and reconnected. Must exceed --ping-interval.
@@ -123,6 +124,7 @@ func Usage() string {
 		DefaultWSURL,
 		DefaultRESTURL,
 		defaultLogLevel,
+		MaxAssetsCeiling,
 	)
 }
 

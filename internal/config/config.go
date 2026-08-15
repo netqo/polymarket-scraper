@@ -57,9 +57,13 @@ const (
 
 	// MaxAssetsCeiling is how wide a connection may get in total, which is a
 	// different number from the width above. That one decides how the requested
-	// tokens are spread across connections; this one is the point past which
-	// the server stops honouring the subscription, so it is what bounds a
-	// connection that later takes on announced tokens as well.
+	// tokens are spread across connections; this one bounds a connection that
+	// later takes on announced tokens as well.
+	//
+	// The server stops honouring a subscription somewhere around 750 assets, so
+	// this is a deliberate margin below the observed cliff rather than the cliff
+	// itself: the failure is silent, and finding its exact edge is not worth
+	// discovering in production.
 	MaxAssetsCeiling = 700
 
 	// DefaultPingInterval matches the documented keepalive cadence. The frame
