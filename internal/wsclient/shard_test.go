@@ -164,7 +164,9 @@ func TestSnapshotCountRevealsAMissingSnapshot(t *testing.T) {
 	if shard.SnapshotsSeen() != 0 {
 		t.Errorf("SnapshotsSeen() = %d, want 0", shard.SnapshotsSeen())
 	}
-	if shard.SnapshotsSeen() >= len(shard.AssetIDs()) {
+	// The shard was subscribed to two assets, so a caller comparing the two
+	// numbers is what notices that neither snapshot ever arrived.
+	if shard.SnapshotsSeen() >= 2 {
 		t.Error("a shard with no snapshots looks fully seeded")
 	}
 }
@@ -237,6 +239,40 @@ func TestSilenceIsReportedAsIdleRatherThanHanging(t *testing.T) {
 	if elapsed := time.Since(started); elapsed > time.Second {
 		t.Errorf("the shard took %v to notice silence, want about the %v idle timeout",
 			elapsed, testIdleTimeout)
+	}
+}
+
+// Teardown must not wait for the keepalive ticker. The rest of this file runs
+// with a ping interval far shorter than the idle timeout, which hides a join
+// that happens before the writer is cancelled; production runs the other way
+// round, at a 10s keepalive against a 30s idle timeout, where the same mistake
+// costs a full ping interval on every reconnect and delays the notice that the
+// tokens on this connection are no longer trustworthy.
+func TestTeardownDoesNotWaitForTheKeepaliveTicker(t *testing.T) {
+	fake := testsupport.NewFakeWS(t,
+		testsupport.WSStep{Send: snapshotFrame},
+		testsupport.WSStep{After: 10 * time.Millisecond, Action: testsupport.WSGoSilent},
+	)
+
+	const longPingInterval = 3 * time.Second
+
+	shard := New(Options{
+		ID:           1,
+		URL:          fake.URL(),
+		AssetIDs:     []string{"111"},
+		PingInterval: longPingInterval,
+		IdleTimeout:  100 * time.Millisecond,
+	})
+
+	started := time.Now()
+	_, err := runShard(t, shard, 10*time.Second)
+
+	if !errors.Is(err, ErrIdle) {
+		t.Fatalf("Run returned %v, want ErrIdle", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Errorf("Run took %v to return after a 100ms idle timeout, want no wait on the %v keepalive",
+			elapsed, longPingInterval)
 	}
 }
 

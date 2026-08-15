@@ -121,9 +121,6 @@ func New(opts Options) *Shard {
 	}
 }
 
-// AssetIDs reports the tokens this shard carries.
-func (s *Shard) AssetIDs() []string { return s.opts.AssetIDs }
-
 // SnapshotsSeen reports how many book snapshots have arrived.
 //
 // This is the number that catches the silent subscribe ceiling: if it is short
@@ -158,16 +155,23 @@ func (s *Shard) Run(ctx context.Context, out chan<- Frame) error {
 
 	// The writer owns every write after the subscription, so there is never
 	// more than one writer on the connection.
+	// Deferred calls run last in, first out, so these two are registered in the
+	// order they must not run in: the writer's context has to be cancelled
+	// before anything joins the writer. Waiting first would block until the
+	// keepalive ticker next fired and its write failed, which is a whole ping
+	// interval of delay on every reconnect, and a whole ping interval before
+	// the tokens on this connection are told they are no longer trustworthy.
+	var writer sync.WaitGroup
+	defer writer.Wait()
+
 	writerCtx, stopWriter := context.WithCancel(ctx)
 	defer stopWriter()
 
-	var writer sync.WaitGroup
 	writer.Add(1)
 	go func() {
 		defer writer.Done()
 		s.writeLoop(writerCtx, conn)
 	}()
-	defer writer.Wait()
 
 	return s.readLoop(ctx, conn, out)
 }

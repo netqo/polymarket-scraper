@@ -24,7 +24,10 @@ it is.
    are produced by integer arithmetic and rendered as strings for the same
    reason. There is no floating-point number anywhere in the document.
 5. **The write is atomic.** The output path holds either the previous run's
-   document or this one's, never a partial file.
+   document or this one's, never a partial file. The file is staged in the
+   destination directory and renamed into place, so it is created with mode
+   `0600`: it is readable by the user that ran the scraper, and a consumer
+   running as a different user needs the permissions widened deliberately.
 
 ## Conventions
 

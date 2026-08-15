@@ -73,10 +73,6 @@ type Engine struct {
 	reconnects  atomic.Int64
 	restResyncs atomic.Int64
 
-	// outstanding counts REST work in flight, so the drain after the window
-	// closes lasts only as long as there is something to wait for.
-	outstanding atomic.Int64
-
 	// restSeeded counts books taken over REST in a rest-only run.
 	restSeeded int
 }
@@ -116,9 +112,12 @@ func New(opts Options) (*Engine, error) {
 		rest:       rest,
 		errors:     &errorSink{},
 		events:     newEventLog(),
-		// Sized so every token can have a re-seed outstanding at once, which
-		// is exactly what a disconnect produces.
-		resync:    make(chan resyncRequest, len(opts.Tokens.IDs)+resyncWorkers),
+		// Sized so every tracker that can exist can have a re-seed outstanding
+		// at once, which is exactly what a disconnect produces. Discovered
+		// tokens are counted too: they use this queue as well, and a queue that
+		// only fits the requested ones lets a token the run picked up on its own
+		// push a token that was actually asked for onto the failure path.
+		resync:    make(chan resyncRequest, len(opts.Tokens.IDs)+opts.Config.DiscoverLimit+resyncWorkers),
 		requested: requestedSet(opts.Tokens.IDs),
 	}, nil
 }

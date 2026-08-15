@@ -1,10 +1,11 @@
 package engine
 
 import (
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/netqo/polymarket-scraper/internal/config"
-
 	"github.com/netqo/polymarket-scraper/internal/tracker"
 	"github.com/netqo/polymarket-scraper/internal/wire"
 )
@@ -36,6 +37,13 @@ func (e *Engine) admitAnnounced(s *shardState, event wire.NewMarket, at time.Tim
 	if len(added) == 0 {
 		return
 	}
+
+	// Recorded before the subscription is attempted, and whether or not it
+	// succeeds: the shard owns these tokens from here on, so every later redial
+	// has to ask for them too. Leaving them out would narrow the feed back to
+	// the original shortlist at the first reconnect while their books carried
+	// on being reported as current, which is the one thing that must not happen.
+	s.extendSubscription(added)
 
 	conn := s.conn.Load()
 	if conn == nil || !conn.Subscribe(added) {
@@ -78,7 +86,6 @@ func (e *Engine) collectAdmissible(s *shardState, event wire.NewMarket) []string
 		}
 
 		s.trackers[assetID] = tracker.New(assetID, e.discoveredTrackerOptions())
-		s.discovered[assetID] = true
 		added = append(added, assetID)
 	}
 
@@ -146,9 +153,7 @@ func (e *Engine) splitDiscovered(all map[string]tracker.Snapshot) (map[string]tr
 
 // sortSnapshots orders snapshots by token id.
 func sortSnapshots(snapshots []tracker.Snapshot) {
-	for i := 1; i < len(snapshots); i++ {
-		for j := i; j > 0 && snapshots[j].TokenID < snapshots[j-1].TokenID; j-- {
-			snapshots[j], snapshots[j-1] = snapshots[j-1], snapshots[j]
-		}
-	}
+	slices.SortFunc(snapshots, func(a, b tracker.Snapshot) int {
+		return strings.Compare(a.TokenID, b.TokenID)
+	})
 }

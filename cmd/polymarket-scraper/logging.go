@@ -42,9 +42,9 @@ func parseLevel(name string) slog.Level {
 		return slog.LevelWarn
 	case levelError:
 		return slog.LevelError
-	case levelInfo:
-		return slog.LevelInfo
 	default:
+		// levelInfo lands here too: naming it separately would be a second
+		// branch returning the same thing as the default.
 		return slog.LevelInfo
 	}
 }

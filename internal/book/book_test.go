@@ -95,6 +95,35 @@ func TestReplaceKeepsUninterpretableLevelsAtTheEnd(t *testing.T) {
 	}
 }
 
+// A snapshot that spells one price two ways describes one level. Keeping both
+// leaves an entry that no delta can reach, because a deletion removes only the
+// one the search finds, and what is left is liquidity that does not exist.
+func TestReplaceCollapsesLevelsAtTheSamePrice(t *testing.T) {
+	var b Book
+	b.Replace(Bids, []Level{lvl("0.98", "100"), lvl("0.980", "250"), lvl("0.97", "10")})
+
+	if got := prices(t, &b, Bids); !slices.Equal(got, []string{"0.98", "0.97"}) {
+		t.Fatalf("bids = %v, want the duplicate price collapsed", got)
+	}
+
+	b.Apply(Bids, lvl("0.980", "0"))
+
+	if got := prices(t, &b, Bids); !slices.Equal(got, []string{"0.97"}) {
+		t.Errorf("bids = %v after deleting 0.980, want the level gone entirely", got)
+	}
+}
+
+// Levels with no usable numeric form are identified by their text, so two
+// different unparseable prices are two different levels and must both survive.
+func TestReplaceKeepsDistinctUninterpretableLevels(t *testing.T) {
+	var b Book
+	b.Replace(Bids, []Level{lvl("nonsense", "1"), lvl("other", "1")})
+
+	if got := b.Len(Bids); got != 2 {
+		t.Errorf("bids hold %d levels, want both unparseable prices kept: %v", got, prices(t, &b, Bids))
+	}
+}
+
 func TestReplaceDiscardsThePreviousSnapshot(t *testing.T) {
 	var b Book
 	b.Replace(Bids, []Level{lvl("0.5", "1"), lvl("0.4", "1")})

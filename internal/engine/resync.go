@@ -38,8 +38,20 @@ func (e *Engine) resyncWorker(ctx context.Context) {
 		case first := <-e.resync:
 			batch := e.drainQueue(first)
 			e.fetch(ctx, batch)
-			e.outstanding.Add(-int64(len(batch)))
+			e.finishOutstanding(batch)
 		}
+	}
+}
+
+// finishOutstanding releases each request against the shard that asked for it,
+// so a shard's drain waits for its own work and nobody else's.
+func (e *Engine) finishOutstanding(batch []resyncRequest) {
+	for _, request := range batch {
+		if request.shardID < 0 || request.shardID >= len(e.shards) {
+			continue
+		}
+
+		e.shards[request.shardID].outstanding.Add(-1)
 	}
 }
 
@@ -162,12 +174,12 @@ func (e *Engine) seedMetadata(ctx context.Context) {
 				return
 			}
 
-			e.outstanding.Add(1)
+			shard.outstanding.Add(1)
 			books, err := e.rest.Books(ctx, batch)
 			if err != nil {
 				e.errors.Addf("could not fetch metadata for %d tokens on shard %d: %v",
 					len(batch), shard.id, err)
-				e.outstanding.Add(-1)
+				shard.outstanding.Add(-1)
 				continue
 			}
 
@@ -179,7 +191,7 @@ func (e *Engine) seedMetadata(ctx context.Context) {
 					at:      e.now(),
 				})
 			}
-			e.outstanding.Add(-1)
+			shard.outstanding.Add(-1)
 		}
 	}
 }

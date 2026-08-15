@@ -73,7 +73,7 @@ func (l *eventLog) noteNewMarket(event wire.NewMarket, at time.Time) bool {
 
 	l.newMarkets = append(l.newMarkets, report.NewMarket{
 		Question:    event.Question,
-		ConditionID: optional(event.ConditionID),
+		ConditionID: report.Optional(event.ConditionID),
 		AssetIDs:    event.AssetIDs,
 		Outcomes:    event.Outcomes,
 		ReceivedAt:  report.FormatTime(at),
@@ -99,10 +99,10 @@ func (l *eventLog) noteResolved(event wire.MarketResolved, at time.Time) {
 	l.seenResolved[key] = true
 
 	l.resolved = append(l.resolved, report.Resolved{
-		ConditionID:    optional(event.Market),
+		ConditionID:    report.Optional(event.Market),
 		AssetIDs:       event.AssetIDs,
-		WinningAssetID: optional(event.WinningAssetID),
-		WinningOutcome: optional(event.WinningOutcome),
+		WinningAssetID: report.Optional(event.WinningAssetID),
+		WinningOutcome: report.Optional(event.WinningOutcome),
 		ReceivedAt:     report.FormatTime(at),
 	})
 }
@@ -137,14 +137,4 @@ func identify(candidates ...string) string {
 	}
 
 	return ""
-}
-
-// optional returns a pointer to s, or nil when it is empty. Empty means the
-// feed did not supply it, and reporting "" would look like a value.
-func optional(s string) *string {
-	if s == "" {
-		return nil
-	}
-
-	return &s
 }
