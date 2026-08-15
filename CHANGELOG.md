@@ -13,16 +13,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not grow with the number of updates received.
 
 ### Changed
+- Each shard now waits only for its own REST work when the window closes, rather
+  than for every shard's, so one slow re-seed no longer holds the others through
+  their whole drain allowance.
+- `--help` states the maximum a connection may be widened to, which validation
+  has always enforced but the text never named.
+- The REST request timeout is applied per attempt whether or not a transport is
+  supplied, instead of being silently ignored when one is.
+
 ### Deprecated
 
 ### Removed
 - The unused unsubscribe message builder. The protocol defines the operation but
   this build does not send it.
+- The unreachable `stale` tracker state, the shard's write-only discovered-token
+  map, and a websocket accessor no production caller used.
 
 ### Fixed
 - Mid-window discovery no longer switches itself off when the token list exactly
   fills a connection, which was the case at the consuming agent's documented
   configuration of 400 tokens.
+- A connection that ends no longer waits a full keepalive interval before the
+  shard can react. Teardown joined the write loop before cancelling it, which
+  delayed both the reconnect and the notice that the tokens on that connection
+  had stopped being trustworthy by up to the 10s ping interval.
+- Tokens taken on mid-window are resubscribed when the connection is redialled.
+  They were dropped from the subscription at the first reconnect while their
+  books carried on being reported as current.
+- A book snapshot that spells one price two ways, such as `0.98` and `0.980`, no
+  longer leaves a second level at that price which no later update can delete.
+- The re-seed queue is sized for discovered tokens as well as requested ones, so
+  a token the run picked up on its own cannot push a requested one onto the
+  failure path when a disconnect fills the queue.
+- A token file with an unexpectedly long line reports what is wrong with it
+  rather than failing with a scanner internal error.
 
 ### Security
 
