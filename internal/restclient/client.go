@@ -50,6 +50,11 @@ const (
 	initialBackoff = 250 * time.Millisecond
 	maxBackoff     = 4 * time.Second
 
+	// maxBackoffSteps is how far the exponential shift is allowed to run.
+	// Four doublings already exceed maxBackoff, so nothing is lost by stopping
+	// there, and the shift cannot overflow however many attempts are configured.
+	maxBackoffSteps = 4
+
 	// maxRetryAfter caps how long a server-supplied Retry-After is honoured.
 	// A cooperative client should wait, but not past the point where waiting
 	// costs more than the data is worth.
@@ -72,7 +77,8 @@ type Options struct {
 	// does, retries included.
 	Rate float64
 
-	// Timeout bounds one request. Zero means DefaultTimeout.
+	// Timeout bounds one attempt, whether or not HTTPClient is supplied. Zero
+	// means DefaultTimeout.
 	Timeout time.Duration
 
 	// Attempts is how many times a request is tried. Zero means
@@ -90,6 +96,7 @@ type Client struct {
 	http     *http.Client
 	limiter  *rate.Limiter
 	attempts int
+	timeout  time.Duration
 
 	requests atomic.Int64
 }
@@ -117,6 +124,10 @@ func New(opts Options) (*Client, error) {
 		attempts = DefaultAttempts
 	}
 
+	// The timeout is enforced per attempt below rather than only here, because a
+	// caller that supplies its own transport would otherwise silently lose the
+	// bound: an option that is quietly ignored is worse than one that does not
+	// exist.
 	httpClient := opts.HTTPClient
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: timeout}
@@ -130,6 +141,7 @@ func New(opts Options) (*Client, error) {
 		// a spike no matter what the average says.
 		limiter:  rate.NewLimiter(rate.Limit(opts.Rate), 1),
 		attempts: attempts,
+		timeout:  timeout,
 	}, nil
 }
 
@@ -211,6 +223,9 @@ func (c *Client) do(ctx context.Context, method, endpoint string, body []byte, o
 
 // attempt performs exactly one request.
 func (c *Client) attempt(ctx context.Context, method, endpoint string, body []byte, out any) error {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
 	var reader io.Reader
 	if body != nil {
 		reader = bytes.NewReader(body)
@@ -312,12 +327,11 @@ func backoffFor(attempt int, lastErr error) time.Duration {
 		return status.RetryAfter
 	}
 
-	wait := initialBackoff << (attempt - 2)
-	if wait > maxBackoff {
-		return maxBackoff
-	}
+	// The shift is bounded rather than trusted: a large attempt count would
+	// otherwise overflow it and turn the longest backoff into no backoff at all.
+	steps := min(attempt-2, maxBackoffSteps)
 
-	return wait
+	return min(initialBackoff<<steps, maxBackoff)
 }
 
 // sleep waits, or gives up early if the run is ending.
