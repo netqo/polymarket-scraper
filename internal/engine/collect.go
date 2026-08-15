@@ -133,10 +133,15 @@ func (e *Engine) runShard(collectCtx context.Context, s *shardState) {
 	everConnected := false
 
 	for collectCtx.Err() == nil {
+		// The subscription rather than the assigned tokens: anything discovery
+		// took on has to be asked for again, or the reconnect would quietly
+		// stop delivering it while its book was still reported as current.
+		subscribed := s.subscribed()
+
 		conn := wsclient.New(wsclient.Options{
 			ID:           s.id,
 			URL:          e.cfg.WSURL,
-			AssetIDs:     s.assetIDs,
+			AssetIDs:     subscribed,
 			PingInterval: e.cfg.PingInterval,
 			IdleTimeout:  e.cfg.IdleTimeout,
 			Logger:       e.logger,
@@ -151,7 +156,7 @@ func (e *Engine) runShard(collectCtx context.Context, s *shardState) {
 
 		if !errors.Is(err, wsclient.ErrDial) {
 			everConnected = true
-			e.checkSubscriptionWasHonoured(s, conn)
+			e.checkSubscriptionWasHonoured(s, conn, len(subscribed))
 		}
 
 		e.reconnects.Add(1)
@@ -179,13 +184,17 @@ func (e *Engine) runShard(collectCtx context.Context, s *shardState) {
 // Past roughly 750 assets the server accepts a subscription, keeps delivering
 // updates, and silently never sends the initial snapshot. The connection looks
 // healthy from every angle except this count.
-func (e *Engine) checkSubscriptionWasHonoured(s *shardState, conn *wsclient.Shard) {
-	if conn.SnapshotsSeen() >= len(s.assetIDs) || conn.FramesSeen() == 0 {
+//
+// The comparison is against everything the connection was subscribed to, not
+// just the assigned tokens: snapshots for tokens discovery added would
+// otherwise make up the shortfall and hide the very failure this catches.
+func (e *Engine) checkSubscriptionWasHonoured(s *shardState, conn *wsclient.Shard, subscribed int) {
+	if conn.SnapshotsSeen() >= subscribed || conn.FramesSeen() == 0 {
 		return
 	}
 
 	e.errors.Addf("shard %d received %d snapshots for %d subscribed assets: the subscription was only partly honoured",
-		s.id, conn.SnapshotsSeen(), len(s.assetIDs))
+		s.id, conn.SnapshotsSeen(), subscribed)
 }
 
 // sleepCtx waits, reporting false if the run ended first.
