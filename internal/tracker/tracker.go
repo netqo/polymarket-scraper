@@ -140,7 +140,7 @@ func (t *Tracker) ApplyRESTBook(fetched wire.RESTBook, at time.Time) Effect {
 		return EffectNone
 	}
 
-	if t.state == StateStale || t.state == StateResyncing || t.state == StateFailed {
+	if t.state == StateResyncing || t.state == StateFailed {
 		t.flag(FlagDeltaGapResynced)
 	}
 
@@ -346,7 +346,7 @@ func (t *Tracker) NoteSubscribeFailed() Effect {
 // NoteResyncFailed records that re-seeding was attempted and did not succeed.
 // The token stays untrusted, and its pre-gap book is not reported.
 func (t *Tracker) NoteResyncFailed() Effect {
-	if t.state == StateResyncing || t.state == StateStale {
+	if t.state == StateResyncing {
 		t.state = StateFailed
 	}
 
@@ -444,7 +444,7 @@ func (t *Tracker) status() Status {
 		return StatusOK
 	case StateSubscribeFailed:
 		return StatusSubscribeFailed
-	case StateStale, StateResyncing, StateFailed:
+	case StateResyncing, StateFailed:
 		return StatusResyncFailed
 	case StatePending:
 		return StatusNoData

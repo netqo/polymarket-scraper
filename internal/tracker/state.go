@@ -26,11 +26,10 @@ const (
 	// StateLive means seeded and trusted. Deltas are being applied.
 	StateLive
 
-	// StateStale means something cast doubt on the book and no re-seed has been
-	// requested yet.
-	StateStale
-
-	// StateResyncing means a re-seed is in flight.
+	// StateResyncing means the book is not trusted and a re-seed has been asked
+	// for. Doubt and the request for a fresh book are one step: nothing casts
+	// doubt on a book without also asking for it to be replaced, so there is no
+	// separate "stale but not yet resyncing" state to be in.
 	StateResyncing
 
 	// StateFailed means re-seeding was attempted and did not succeed, or the
@@ -48,8 +47,6 @@ func (s State) String() string {
 		return "pending"
 	case StateLive:
 		return "live"
-	case StateStale:
-		return "stale"
 	case StateResyncing:
 		return "resyncing"
 	case StateFailed:
