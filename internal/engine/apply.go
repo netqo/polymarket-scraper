@@ -59,7 +59,7 @@ func (e *Engine) drainShard(drainCtx context.Context, s *shardState, results cha
 			e.applyControl(s, msg)
 
 		case <-idle.C:
-			if e.outstanding.Load() == 0 {
+			if s.outstanding.Load() == 0 {
 				results <- s.finalize(e.now())
 				return
 			}
@@ -248,7 +248,7 @@ func (e *Engine) act(s *shardState, t *tracker.Tracker, effect tracker.Effect) {
 
 	select {
 	case e.resync <- resyncRequest{shardID: s.id, tokenID: t.TokenID()}:
-		e.outstanding.Add(1)
+		s.outstanding.Add(1)
 	default:
 		t.NoteResyncFailed()
 		e.errors.Addf("shard %d: could not queue a re-seed for token %s, so it is reported as failed",

@@ -38,7 +38,14 @@ func IsKeepalive(frame []byte) bool {
 // Events and an error can both be returned. An array whose elements are not all
 // decodable still yields the ones that were, because discarding a whole frame
 // over one bad element would throw away updates for tokens that are perfectly
-// fine. The caller applies what it got and distrusts what the error names.
+// fine.
+//
+// What the caller does with the pair is its own decision, and the engine's is
+// deliberately blunt: a message it could not read is a message whose token it
+// does not know, so it distrusts every token on the connection before applying
+// what did decode. Snapshots in the same frame then restore trust immediately,
+// which is the common case, since array framing is what the initial snapshot
+// burst uses.
 func DecodeFrame(frame []byte) ([]Event, error) {
 	trimmed := bytes.TrimSpace(frame)
 	if len(trimmed) == 0 {

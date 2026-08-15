@@ -62,7 +62,10 @@ type control struct {
 // would let an I/O goroutine hold the lock at exactly the moment the run needs
 // to read it, which is the hang the deadline exists to prevent.
 type shardState struct {
-	id       int
+	id int
+
+	// assetIDs are the requested tokens assigned to this shard. It is the
+	// completeness baseline and never changes.
 	assetIDs []string
 
 	frames  chan wsclient.Frame
@@ -71,11 +74,21 @@ type shardState struct {
 	// trackers is read and written only by the apply goroutine.
 	trackers map[string]*tracker.Tracker
 
-	// discovered names the tokens picked up from announcements rather than
-	// requested, and closedToDiscovery records that the shard has stopped
-	// accepting more. Both belong to the apply goroutine alone.
-	discovered        map[string]bool
+	// closedToDiscovery records that the shard has stopped accepting announced
+	// tokens. It belongs to the apply goroutine alone.
 	closedToDiscovery bool
+
+	// subscription is assetIDs plus every token discovery has taken on, and it
+	// is what a redial subscribes to. It is replaced rather than mutated,
+	// because the apply goroutine extends it while the shard's own goroutine
+	// reads it to reconnect.
+	subscription atomic.Pointer[[]string]
+
+	// outstanding counts this shard's REST work in flight, so its drain lasts
+	// only as long as it has something of its own to wait for. Per shard rather
+	// than per run: one shard's slow re-seed is no reason for another to sit
+	// through its whole drain allowance.
+	outstanding atomic.Int64
 
 	// conn is the live connection, replaced on every reconnect, so a
 	// subscription change can find the current one.
@@ -89,14 +102,41 @@ func newShardState(id int, assetIDs []string, opts tracker.Options) *shardState 
 		trackers[assetID] = tracker.New(assetID, opts)
 	}
 
-	return &shardState{
-		id:         id,
-		assetIDs:   assetIDs,
-		frames:     make(chan wsclient.Frame, frameBuffer),
-		control:    make(chan control, controlBuffer),
-		trackers:   trackers,
-		discovered: make(map[string]bool),
+	shard := &shardState{
+		id:       id,
+		assetIDs: assetIDs,
+		frames:   make(chan wsclient.Frame, frameBuffer),
+		control:  make(chan control, controlBuffer),
+		trackers: trackers,
 	}
+	shard.subscription.Store(&assetIDs)
+
+	return shard
+}
+
+// subscribed reports the tokens a connection for this shard must subscribe to.
+func (s *shardState) subscribed() []string {
+	if current := s.subscription.Load(); current != nil {
+		return *current
+	}
+
+	return s.assetIDs
+}
+
+// extendSubscription records tokens taken on mid-window, so a reconnect
+// resubscribes them rather than silently narrowing the feed back to the
+// original shortlist while their books carry on being reported as current.
+//
+// The slice is copied rather than appended to in place: the shard's own
+// goroutine may be reading the previous one to redial.
+func (s *shardState) extendSubscription(assetIDs []string) {
+	current := s.subscribed()
+
+	extended := make([]string, 0, len(current)+len(assetIDs))
+	extended = append(extended, current...)
+	extended = append(extended, assetIDs...)
+
+	s.subscription.Store(&extended)
 }
 
 // send delivers a control message, giving up rather than blocking if the run is

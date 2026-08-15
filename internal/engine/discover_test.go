@@ -1,7 +1,10 @@
 package engine
 
 import (
+	"context"
+	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -67,7 +70,7 @@ func TestDiscoveryStopsAtTheLimit(t *testing.T) {
 		}, time.Now())
 	}
 
-	if got := len(shard.discovered); got != 3 {
+	if got := discoveredCount(shard); got != 3 {
 		t.Errorf("took on %d announced tokens, want the limit of 3", got)
 	}
 	if !shard.closedToDiscovery {
@@ -111,9 +114,9 @@ func TestDiscoveryStopsAtTheConnectionCeiling(t *testing.T) {
 		t.Errorf("the shard holds %d assets, past the ceiling of %d",
 			len(shard.trackers), config.MaxAssetsCeiling)
 	}
-	if len(shard.discovered) != 50 {
+	if discoveredCount(shard) != 50 {
 		t.Errorf("took on %d announced tokens, want the 50 of headroom below the ceiling",
-			len(shard.discovered))
+			discoveredCount(shard))
 	}
 	if !mentions(engine.errors.Messages(), "ceiling") {
 		t.Errorf("errors = %v, want the ceiling recorded", engine.errors.Messages())
@@ -127,8 +130,8 @@ func TestDiscoveryCanBeDisabled(t *testing.T) {
 
 	engine.admitAnnounced(shard, wire.NewMarket{ID: "1", AssetIDs: wire.StringList{"a", "b"}}, time.Now())
 
-	if len(shard.discovered) != 0 {
-		t.Errorf("took on %d tokens with discovery disabled", len(shard.discovered))
+	if discoveredCount(shard) != 0 {
+		t.Errorf("took on %d tokens with discovery disabled", discoveredCount(shard))
 	}
 }
 
@@ -140,10 +143,10 @@ func TestAnAlreadyRequestedTokenIsNotRediscovered(t *testing.T) {
 
 	engine.admitAnnounced(shard, wire.NewMarket{ID: "1", AssetIDs: wire.StringList{"111", "999"}}, time.Now())
 
-	if shard.discovered["111"] {
-		t.Error("a requested token was taken on as a discovery")
+	if discoveredCount(shard) != 1 {
+		t.Errorf("took on %d tokens, want only the genuinely new one", discoveredCount(shard))
 	}
-	if !shard.discovered["999"] {
+	if shard.trackers["999"] == nil {
 		t.Error("the genuinely new token was not taken on")
 	}
 }
@@ -157,8 +160,8 @@ func TestDiscoveryClosesAtTheSweep(t *testing.T) {
 	engine.applyControl(shard, control{kind: ctrlSweep, at: time.Now()})
 	engine.admitAnnounced(shard, wire.NewMarket{ID: "1", AssetIDs: wire.StringList{"a"}}, time.Now())
 
-	if len(shard.discovered) != 0 {
-		t.Errorf("took on %d tokens after the sweep closed discovery", len(shard.discovered))
+	if discoveredCount(shard) != 0 {
+		t.Errorf("took on %d tokens after the sweep closed discovery", discoveredCount(shard))
 	}
 }
 
@@ -187,6 +190,75 @@ func TestDiscoveredTokensDoNotCountTowardsTheRequestedOnes(t *testing.T) {
 		t.Errorf("discovered order = %v, want sorted", []string{discovered[0].TokenID, discovered[1].TokenID})
 	}
 }
+
+// A token taken on mid-window has to be asked for again when the connection is
+// redialled. Subscriptions do not survive a reconnect, so a shard that resends
+// only its original shortlist stops receiving the announced tokens while their
+// books keep being reported as current, which is the one outcome the trust
+// machinery exists to rule out.
+func TestDiscoveredTokensAreResubscribedOnReconnect(t *testing.T) {
+	engine := engineForDiscovery(t, 100)
+	shard := newShardState(0, []string{"111"}, tracker.Options{})
+
+	engine.admitAnnounced(shard, wire.NewMarket{ID: "1", AssetIDs: wire.StringList{"777", "888"}}, time.Now())
+
+	subscribed := shard.subscribed()
+	want := []string{"111", "777", "888"}
+	if !slices.Equal(subscribed, want) {
+		t.Errorf("a redial would subscribe to %v, want %v", subscribed, want)
+	}
+	if !slices.Equal(shard.assetIDs, []string{"111"}) {
+		t.Errorf("assetIDs = %v, want the requested list unchanged: it is the completeness baseline",
+			shard.assetIDs)
+	}
+}
+
+// The same guarantee end to end: the connection drops after an announcement has
+// been taken on, and the subscription the shard sends when it redials has to
+// name the announced tokens as well. It is checked on the wire rather than in
+// the shard's own state, because the server is what decides whether those tokens
+// keep arriving.
+func TestAReconnectResubscribesTheAnnouncedTokens(t *testing.T) {
+	ws := testsupport.NewFakeWS(t,
+		testsupport.WSStep{Send: wsSnapshot111},
+		testsupport.WSStep{After: 20 * time.Millisecond, Send: wsNewMarket},
+		testsupport.WSStep{After: 20 * time.Millisecond, Action: testsupport.WSDropConnection},
+	)
+	rest := testsupport.NewFakeREST(t)
+	rest.ServeBook("111", levels("0.97", "100"), levels("0.99", "50"))
+	rest.ServeBook("777", levels("0.10", "5"), levels("0.90", "5"))
+	rest.ServeBook("888", levels("0.90", "5"), levels("0.10", "5"))
+
+	cfg := websocketConfig(ws.URL(), rest.URL())
+	// Long enough to outlast the reconnection backoff, which is what this test
+	// is here to see the other side of.
+	cfg.Duration = reconnectInitialBackoff + 500*time.Millisecond
+
+	collector, err := New(Options{Config: cfg, Tokens: tokenlist.List{IDs: []string{"111"}}})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	if _, err := collector.Run(context.Background()); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	// Opening subscriptions only: the mid-window update carries no type field.
+	openings := ws.ReceivedMatching(`"type":"market"`)
+	if len(openings) < 2 {
+		t.Fatalf("the server saw %d opening subscriptions, want a reconnect: %v", len(openings), ws.Received())
+	}
+
+	for _, id := range []string{"111", "777", "888"} {
+		if !strings.Contains(openings[1], id) {
+			t.Errorf("the resubscription %s leaves out %s, so its book would stop updating "+
+				"while still being reported as current", openings[1], id)
+		}
+	}
+}
+
+// discoveredCount reports how many tokens a shard took on from announcements,
+// which is everything it tracks beyond the ones it was assigned.
+func discoveredCount(s *shardState) int { return len(s.trackers) - len(s.assetIDs) }
 
 // engineForDiscovery builds an engine whose only interesting configuration is
 // the discovery budget.
@@ -235,8 +307,8 @@ func TestDiscoveryStillWorksOnAFullShortlist(t *testing.T) {
 		AssetIDs: wire.StringList{"announced-a", "announced-b"},
 	}, time.Now())
 
-	if len(shard.discovered) != 2 {
+	if discoveredCount(shard) != 2 {
 		t.Fatalf("took on %d announced tokens on a full shortlist, want 2. errors: %v",
-			len(shard.discovered), engine.errors.Messages())
+			discoveredCount(shard), engine.errors.Messages())
 	}
 }

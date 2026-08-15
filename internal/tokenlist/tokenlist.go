@@ -32,6 +32,11 @@ var ErrEmpty = errors.New("no token ids found")
 // cannot corrupt the first token id.
 var byteOrderMark = []byte("\xef\xbb\xbf")
 
+// maxLineLength bounds one line of the one-id-per-line format. It is generous
+// rather than tight: the whole file is already in memory by this point, so the
+// only thing this limit decides is which error message a malformed file gets.
+const maxLineLength = 1 << 20
+
 // List is the outcome of loading a token file.
 type List struct {
 	// IDs are the requested token ids, deduplicated, in first-occurrence order.
@@ -91,6 +96,11 @@ func parseLines(data []byte) ([]string, error) {
 	var entries []string
 
 	scanner := bufio.NewScanner(bytes.NewReader(data))
+	// A token id is about 77 bytes, so the default 64 KiB line cap is ample for
+	// the format as documented. It is raised anyway because the failure it
+	// produces is "token file: reading token lines: bufio.Scanner: token too
+	// long", which tells an operator nothing about the file they wrote.
+	scanner.Buffer(nil, maxLineLength)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "#") {

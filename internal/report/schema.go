@@ -182,9 +182,13 @@ func optionalTime(t time.Time) *string {
 	return &formatted
 }
 
-// optional renders a string, or null when it is empty. Empty means "not
+// Optional renders a string, or null when it is empty. Empty means "not
 // learned", and reporting it as "" would look like a value.
-func optional(s string) *string {
+//
+// It is exported for the same reason FormatTime is: everything that fills in
+// this schema, including the engine that builds the event lists, has to apply
+// the rule the same way, and two spellings of it would eventually disagree.
+func Optional(s string) *string {
 	if s == "" {
 		return nil
 	}
@@ -195,5 +199,5 @@ func optional(s string) *string {
 // optionalSource renders a source attribution, or null when there is no
 // trustworthy book to attribute.
 func optionalSource(s tracker.Source) *string {
-	return optional(string(s))
+	return Optional(string(s))
 }

@@ -129,18 +129,3 @@ func finalizeAll(trackers map[string]*tracker.Tracker, at time.Time) map[string]
 
 	return snapshots
 }
-
-// chunk splits ids into batches of at most size.
-func chunk(ids []string, size int) [][]string {
-	if size <= 0 || len(ids) == 0 {
-		return nil
-	}
-
-	batches := make([][]string, 0, (len(ids)+size-1)/size)
-	for start := 0; start < len(ids); start += size {
-		end := min(start+size, len(ids))
-		batches = append(batches, ids[start:end])
-	}
-
-	return batches
-}
