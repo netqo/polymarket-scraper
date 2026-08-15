@@ -77,12 +77,20 @@ func (b *Book) side(s Side) *[]Level {
 // The incoming order is not trusted: levels are copied and sorted into output
 // order. Levels whose price cannot be interpreted numerically are kept, at the
 // end, because the scraper reports what it saw rather than what it understood.
+//
+// Levels that compare equal are collapsed, keeping the first. One price is one
+// level, and "0.98" and "0.980" are one price: a snapshot spelling it both ways
+// would otherwise leave a second entry at that price which no delta can reach,
+// since a deletion removes the one the search finds. That is phantom liquidity,
+// which is the failure this package exists to make impossible.
 func (b *Book) Replace(s Side, levels []Level) {
 	sorted := make([]Level, len(levels))
 	copy(sorted, levels)
 	slices.SortStableFunc(sorted, s.compare)
 
-	*b.side(s) = sorted
+	*b.side(s) = slices.CompactFunc(sorted, func(a, b Level) bool {
+		return s.compare(a, b) == 0
+	})
 }
 
 // Apply applies one incremental change to a side.
