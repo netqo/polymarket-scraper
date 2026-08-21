@@ -259,6 +259,37 @@ func TestProcessLoggerAppendsToAnExistingFile(t *testing.T) {
 	}
 }
 
+// The whole point of separating the two destinations: a frame that could not be
+// decoded is quoted in full where an agent can read it, and cut down to
+// something legible on a terminal.
+func TestProcessLoggerTruncatesForTheTerminalOnly(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "run.log")
+	frame := strings.Repeat("x", consoleValueLimit*4)
+
+	var buf bytes.Buffer
+	proc, err := newProcessLogger(&buf, loggerConfig(levelInfo, path))
+	if err != nil {
+		t.Fatalf("newProcessLogger returned error: %v", err)
+	}
+	proc.logger.Warn("a frame could not be decoded", "error", frame)
+	proc.Close()
+
+	if strings.Contains(buf.String(), frame) {
+		t.Error("the terminal received the value in full")
+	}
+	if !strings.Contains(buf.String(), "bytes)") {
+		t.Errorf("terminal = %q, want the truncation to report the true length", buf.String())
+	}
+
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading the log file: %v", err)
+	}
+	if !strings.Contains(string(contents), frame) {
+		t.Error("the log file did not keep the value in full")
+	}
+}
+
 // A failure that repeated until the run ended would otherwise be reported
 // without its count, which is where the count is most worth having.
 func TestProcessLoggerCloseFlushesTheRepeatCount(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 )
 
 // Keepalive frames.
@@ -142,14 +143,25 @@ func decodeInto[T Event](raw []byte) (Event, error) {
 	return event, nil
 }
 
-// preview shortens a payload for an error message, so a log line stays legible
-// when a frame is large.
-func preview(raw []byte) string {
-	const limit = 120
+// maxPreviewBytes bounds how much of a payload an error quotes.
+//
+// It is generous rather than tight, because the payload is the only evidence of
+// what went wrong and 120 characters routinely stopped short of the part that
+// mattered. It is still bounded: a frame may be as large as wsclient's read
+// limit allows, and an error carrying megabytes would reach both the run's
+// error list and the output document.
+//
+// Deciding how much of this to actually show is not this package's business.
+// Each destination trims it further: the terminal to a couple of lines, the
+// document to a sentence, and the log file not at all.
+const maxPreviewBytes = 8 << 10
 
-	if len(raw) <= limit {
+// preview quotes a payload for an error message, bounded so that one enormous
+// frame cannot dominate everything downstream of it.
+func preview(raw []byte) string {
+	if len(raw) <= maxPreviewBytes {
 		return string(raw)
 	}
 
-	return string(raw[:limit]) + "..."
+	return string(raw[:maxPreviewBytes]) + "... (" + strconv.Itoa(len(raw)) + " bytes)"
 }

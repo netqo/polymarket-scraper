@@ -27,6 +27,14 @@ const (
 // readable more widely than the document it explains.
 const logFileMode = 0o600
 
+// consoleValueLimit is how much of one attribute value reaches the terminal.
+//
+// Chosen to be about two lines on a normal terminal: long enough for a file
+// path or the start of a frame, short enough that one enormous value cannot
+// scroll the rest of the run out of view. The log file applies no limit, so
+// nothing is actually lost by cutting it here.
+const consoleValueLimit = 300
+
 // processLogger is the run's logger together with the cleanup its destinations
 // need.
 //
@@ -53,7 +61,13 @@ type processLogger struct {
 func newProcessLogger(stderr io.Writer, cfg config.Config) (*processLogger, error) {
 	level := parseLevel(cfg.LogLevel)
 
-	console := logging.New(stderr, logging.Options{Level: level})
+	console := logging.New(stderr, logging.Options{
+		Level: level,
+		// A decode failure quotes the frame it could not read, and a frame runs
+		// to kilobytes. On a terminal that scrolls everything else away, so the
+		// value is cut to roughly two lines here and left whole in the file.
+		MaxValueLength: consoleValueLimit,
+	})
 
 	// Declared as the interface, not as *logging.Handler: a nil pointer in a
 	// non-nil interface would defeat the nil check inside NewTee and panic on
