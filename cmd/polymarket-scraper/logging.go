@@ -149,10 +149,6 @@ func openLogFile(path string) (*os.File, error) {
 // would otherwise be reported without its count, which is the one case where
 // the count is most worth having.
 func (p *processLogger) Close() {
-	if p == nil {
-		return
-	}
-
 	_ = p.coalescer.Flush()
 	if p.file != nil {
 		_ = p.file.Close()

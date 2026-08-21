@@ -326,8 +326,3 @@ func TestProcessLoggerReportsAnUnusableLogPath(t *testing.T) {
 		t.Errorf("error %q does not name the path", err)
 	}
 }
-
-func TestProcessLoggerCloseIsSafeOnANilReceiver(t *testing.T) {
-	var proc *processLogger
-	proc.Close()
-}
