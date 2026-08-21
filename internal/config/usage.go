@@ -81,6 +81,10 @@ ENDPOINTS
 OTHER
   --log-level LEVEL debug, info, warn or error. Also read from LOG_LEVEL.
                     Default %[14]s.
+  --log-file PATH   Also append every log line to this file as the run happens,
+                    uncoloured and never truncated, so it can be tailed while
+                    the run is still going. Created if absent, mode 0600.
+                    Off by default.
   --version         Print the version and exit.
   --help            Print this text and exit.
 
@@ -105,6 +109,12 @@ EXIT STATUS
 LOGGING
   Logs go to stderr. On success, and only on success, one summary line is
   written to stdout, so non-empty stdout is a reliable success signal.
+
+  Each line carries a timestamp and a prefix: [!] error or warning, [*] info,
+  [~] step or detail, [+] success, [?] something needing a decision. Colour is
+  used only when stderr is a terminal. A message that repeats is written once
+  and then summarised as "message (xN)" once the repeats stop, so a connection
+  failing in a loop cannot bury everything else.
 `
 
 // Usage returns the help text.

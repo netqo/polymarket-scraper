@@ -93,6 +93,7 @@ func TestParseOverridesEveryDefault(t *testing.T) {
 		"--ws-url", "ws://127.0.0.1:1/ws",
 		"--rest-url", "http://127.0.0.1:2",
 		"--log-level", "debug",
+		"--log-file", "run.log",
 	)
 
 	got, err := Parse(args, noEnv)
@@ -117,6 +118,7 @@ func TestParseOverridesEveryDefault(t *testing.T) {
 		WSURL:                  "ws://127.0.0.1:1/ws",
 		RESTURL:                "http://127.0.0.1:2",
 		LogLevel:               "debug",
+		LogFile:                "run.log",
 	}
 	if got != want {
 		t.Errorf("Parse() =\n %+v\nwant\n %+v", got, want)

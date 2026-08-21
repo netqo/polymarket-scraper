@@ -135,6 +135,15 @@ type Config struct {
 
 	// LogLevel is the minimum severity written to stderr.
 	LogLevel string
+
+	// LogFile additionally appends every log line to a file as the run happens,
+	// uncoloured and untruncated. Empty disables it.
+	//
+	// It exists because stderr is only readable by whatever launched the
+	// process, which rules out watching a run in progress from anywhere else.
+	// The file is appended to and flushed per line, so it can be tailed while
+	// the run is still going rather than only after it exits.
+	LogFile string
 }
 
 // New returns a Config with every default applied and nothing else set.

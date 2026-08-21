@@ -1,9 +1,15 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
+
+	"github.com/netqo/polymarket-scraper/internal/config"
+	"github.com/netqo/polymarket-scraper/internal/logging"
 )
 
 // Log levels accepted in LOG_LEVEL, lowercased.
@@ -14,19 +20,100 @@ const (
 	levelError = "error"
 )
 
-// newLogger builds the process logger.
+// logFileMode matches the output document's permissions. A log names the tokens
+// a run collected and the errors it hit, so there is no reason for it to be
+// readable more widely than the document it explains.
+const logFileMode = 0o600
+
+// processLogger is the run's logger together with the cleanup its destinations
+// need.
 //
-// Every record goes to w, which is always stderr in production (requirement
-// A7): stdout is reserved for the single machine-readable summary line, so a
-// consumer can treat "stdout is non-empty" as a reliable success signal.
+// It is a type rather than a bare *slog.Logger because two things now outlive
+// the last log call: a repeated message may still be waiting for its count, and
+// a log file may still be open. Both have to be dealt with before the process
+// exits, and a caller cannot be expected to know that.
+type processLogger struct {
+	logger    *slog.Logger
+	coalescer *logging.Coalescer
+	file      *os.File
+}
+
+// newProcessLogger builds the process logger.
 //
-// The handler is text, not JSON, on purpose. These strings are read by a human
-// when something breaks and are copied verbatim into the consuming agent's
-// data_issues list (F4), so they need to be legible first and parseable second.
-func newLogger(w io.Writer, levelName string) *slog.Logger {
-	return slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{
-		Level: parseLevel(levelName),
-	}))
+// Records always go to stderr (requirement A7): stdout is reserved for the
+// single machine-readable summary line, so a consumer can treat "stdout is
+// non-empty" as a reliable success signal.
+//
+// When a log file is configured the same records go to both, rendered
+// differently. The terminal gets colour when it is a terminal; the file never
+// does, because escape codes in a file an agent parses are noise it has to
+// strip back out.
+func newProcessLogger(stderr io.Writer, cfg config.Config) (*processLogger, error) {
+	level := parseLevel(cfg.LogLevel)
+
+	console := logging.New(stderr, logging.Options{Level: level})
+
+	// Declared as the interface, not as *logging.Handler: a nil pointer in a
+	// non-nil interface would defeat the nil check inside NewTee and panic on
+	// the first record.
+	var (
+		file        *os.File
+		fileHandler slog.Handler
+	)
+	if cfg.LogFile != "" {
+		opened, err := openLogFile(cfg.LogFile)
+		if err != nil {
+			return nil, err
+		}
+
+		file = opened
+		fileHandler = logging.New(file, logging.Options{
+			Level:  level,
+			Colour: logging.ColourNever,
+		})
+	}
+
+	// Coalescing wraps the fan-out rather than each destination, so a repeat is
+	// counted once and both destinations agree about how many there were.
+	coalescer := logging.NewCoalescer(logging.NewTee(console, fileHandler))
+
+	return &processLogger{
+		logger:    slog.New(coalescer),
+		coalescer: coalescer,
+		file:      file,
+	}, nil
+}
+
+// openLogFile opens the run's log for appending.
+//
+// Appending rather than truncating: a run is often one of a series, and losing
+// the previous run's log is exactly the wrong thing to do to whoever is trying
+// to work out when a problem started.
+func openLogFile(path string) (*os.File, error) {
+	// #nosec G304 -- the path is an operator-supplied command line argument;
+	// writing to an arbitrary file is the entire purpose of the flag.
+	file, err := os.OpenFile(filepath.Clean(path), os.O_APPEND|os.O_CREATE|os.O_WRONLY, logFileMode)
+	if err != nil {
+		return nil, fmt.Errorf("cannot open the log file %s: %w", path, err)
+	}
+
+	return file, nil
+}
+
+// Close releases anything still held and closes the log file.
+//
+// The flush matters: a failure that repeated until the moment the run ended
+// would otherwise be reported without its count, which is the one case where
+// the count is most worth having.
+func (p *processLogger) Close() {
+	if p == nil {
+		return
+	}
+
+	_ = p.coalescer.Flush()
+	if p.file != nil {
+		_ = p.file.Close()
+	}
 }
 
 // parseLevel maps a LOG_LEVEL string to a slog level, defaulting to info.

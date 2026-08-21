@@ -56,7 +56,17 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 
-	logger := newLogger(stderr, cfg.LogLevel)
+	// The log file is opened before any work starts, so a path that cannot be
+	// written is a usage error rather than something discovered at the end of a
+	// run that has already spent its window.
+	proc, err := newProcessLogger(stderr, cfg)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s\n", err)
+		return exitUsage
+	}
+	defer proc.Close()
+
+	logger := proc.logger
 
 	tokens, err := tokenlist.Load(cfg.TokensPath)
 	if err != nil {
