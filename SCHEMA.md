@@ -59,7 +59,7 @@ clocks agree.
 | `connection` | object | How the data was obtained. |
 | `books` | object | Keyed by token id. Contains every requested token, and possibly more. |
 | `events` | object | Announcements seen during the window. |
-| `errors` | array of strings | Anything abnormal, in words. Meant to be quoted verbatim. |
+| `errors` | array of strings | Anything abnormal, in words. Meant to be quoted verbatim. See below. |
 
 ### `connection`
 
@@ -69,6 +69,31 @@ clocks agree.
 | `reconnects` | number | How many times a connection had to be re-established. |
 | `rest_requests` | number | How many REST requests were made in total. |
 | `rest_resyncs` | number | How many tokens were re-seeded over REST. |
+
+### `errors`
+
+Plain sentences naming what happened and where, intended to be quoted straight
+into whatever report the consumer produces. Three things bound the list, and all
+three announce themselves rather than happening silently:
+
+| Bound | What you see |
+|---|---|
+| A message that happened more than once appears once, with its count. | `shard 0: connection ended (idle), reconnecting (x1200)` |
+| A message longer than 500 bytes is cut, and says how long it really was. | `... (9174 bytes, in full in the log)` |
+| Past 500 **distinct** messages the rest are counted, not kept. | `73 further distinct messages were suppressed` |
+
+Repeats are collapsed rather than truncated away because the alternative loses
+the wrong end of the list: a connection redialling in a loop produces one
+message per attempt, and keeping the first five hundred of those means every
+later failure, including the ones explaining why the run ended, is discarded.
+Collapsing costs one entry no matter how long the loop runs.
+
+The counts are worth reading. A run reporting `(x1200)` against a single message
+and nothing else was in one failure the whole time, which is a different
+situation from twelve hundred separate problems.
+
+Anything cut short here is present in full in the log file, if `--log-file` was
+given.
 
 ## `books.<token_id>`
 
