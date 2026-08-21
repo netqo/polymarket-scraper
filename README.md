@@ -59,6 +59,27 @@ Run `polymarket-scraper --help` for the authoritative flag list. The output
 contract is documented in `SCHEMA.md`, which is the file to paste into a
 consuming agent's prompt.
 
+### Watching a run
+
+`--log-file` appends every record to a file as the run happens, so a run can be
+followed from somewhere other than the terminal that launched it:
+
+```bash
+polymarket-scraper --tokens tokens.txt --out books.json --log-file run.log &
+tail -f run.log
+```
+
+Each line carries a timestamp, a prefix and the run's identifier: `[!]` error or
+warning, `[*]` info, `[~]` step or detail, `[+]` success, `[?]` something needing
+a decision. Colour is used only when stderr is a terminal, so piped output and
+the file itself stay plain. A message that repeats is written once and then
+summarised as `message (xN)` when the repeats stop, which is what keeps a
+connection failing in a loop from burying everything else.
+
+The file is opened for appending at mode `0600`, so successive runs accumulate
+in it and the run identifier is what tells them apart. It is the place to look
+for anything the output document had to shorten.
+
 ## Quality
 
 ```bash
@@ -87,7 +108,9 @@ a run and checks that the output path is never observed truncated.
 - Conventional Commits. Git Flow simplified: `dev` integrates work, `main`
   receives tagged release merges, and PRs to `dev` need green CI.
 - Dependencies pinned exactly; `go.sum` and `flake.lock` committed.
-- Structured logging with `log/slog`, text handler, always to stderr.
+- Structured logging with `log/slog`, always to stderr, rendered by
+  `internal/logging`: one prefixed line per record, colour only on a terminal,
+  and repeats collapsed into a count.
 - ASCII-only in code, comments, and commit messages.
 - Nix builds, Docker runs: the release image is produced by `nix build`, and
   there is no Dockerfile.
