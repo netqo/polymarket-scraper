@@ -14,3 +14,5 @@ __pycache__/
 # Working documents that stay out of the published repo.
 CLAUDE.md
 docs/
+TODO.md
+NETWORK-CHECKS.md
