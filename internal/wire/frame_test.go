@@ -2,6 +2,7 @@ package wire
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -356,6 +357,45 @@ func TestDecodeFrameAcceptsAnEmptyArray(t *testing.T) {
 	}
 	if len(events) != 0 {
 		t.Errorf("DecodeFrame returned %d events for an empty array", len(events))
+	}
+}
+
+// The payload is the only evidence of what the exchange actually sent, so an
+// error quotes as much of it as is reasonable. It is still bounded, because a
+// frame may be as large as the read limit allows and an error carrying
+// megabytes would reach the output document.
+func TestPreviewIsGenerousButBounded(t *testing.T) {
+	tests := []struct {
+		name string
+		size int
+	}{
+		{"short payloads are quoted whole", 200},
+		{"payloads up to the limit are quoted whole", maxPreviewBytes},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw := []byte(strings.Repeat("x", tt.size))
+
+			if got := preview(raw); got != string(raw) {
+				t.Errorf("preview shortened a %d byte payload to %d bytes", tt.size, len(got))
+			}
+		})
+	}
+}
+
+func TestPreviewReportsWhatItLeftOut(t *testing.T) {
+	const size = maxPreviewBytes * 4
+
+	got := preview([]byte(strings.Repeat("x", size)))
+
+	if len(got) > maxPreviewBytes+64 {
+		t.Errorf("preview returned %d bytes for a %d byte payload, want it bounded", len(got), size)
+	}
+	// Trailing off silently would leave a reader unable to tell a truncated
+	// payload from a complete one.
+	if !strings.Contains(got, strconv.Itoa(size)) {
+		t.Errorf("preview = %q..., want it to report the true size %d", got[:64], size)
 	}
 }
 

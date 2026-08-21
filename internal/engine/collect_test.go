@@ -1,11 +1,15 @@
 package engine
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/netqo/polymarket-scraper/internal/config"
+	"github.com/netqo/polymarket-scraper/internal/logging"
 	"github.com/netqo/polymarket-scraper/internal/report"
 	"github.com/netqo/polymarket-scraper/internal/testsupport"
 	"github.com/netqo/polymarket-scraper/internal/tokenlist"
@@ -380,6 +384,88 @@ func TestAnInterruptedWebsocketRunStillProducesADocument(t *testing.T) {
 	}
 	if document.SchemaVersion != report.SchemaVersion {
 		t.Errorf("SchemaVersion = %q, want a complete document", document.SchemaVersion)
+	}
+}
+
+// collectLogging runs a collection with the log captured at the given level.
+func collectLogging(t *testing.T, level slog.Level, ws *testsupport.FakeWS, rest *testsupport.FakeREST, ids ...string) (report.Document, string) {
+	t.Helper()
+
+	var logs bytes.Buffer
+	collector, err := New(Options{
+		Config: websocketConfig(ws.URL(), rest.URL()),
+		Tokens: tokenlist.List{IDs: ids},
+		Logger: slog.New(logging.New(&logs, logging.Options{Level: level})),
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+
+	document, err := collector.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	return document, logs.String()
+}
+
+// Until the run ends there is no document, so a run quietly losing trust in
+// every token looks exactly like a healthy one to anything watching it.
+func TestFlagsAreLoggedAsTheyAreRaised(t *testing.T) {
+	ws := testsupport.NewFakeWS(t,
+		testsupport.WSStep{Send: wsSnapshot111},
+		testsupport.WSStep{After: 30 * time.Millisecond, Action: testsupport.WSDropConnection},
+	)
+	rest := testsupport.NewFakeREST(t)
+	rest.ServeBook("111", levels("0.50", "7"), levels("0.55", "7"))
+
+	document, logs := collectLogging(t, slog.LevelInfo, ws, rest, "111")
+
+	if !strings.Contains(logs, "token flagged flag=disconnected") {
+		t.Errorf("logs do not report the disconnect as it happened:\n%s", logs)
+	}
+	// The log and the document have to agree; the flag reaching one and not the
+	// other would make the live view untrustworthy in exactly the way that
+	// matters.
+	if !containsFlag(document.Books["111"].Flags, tracker.FlagDisconnected) {
+		t.Errorf("document flags = %v, want the flag the log reported",
+			document.Books["111"].Flags)
+	}
+}
+
+// One disconnect raises the same flag on every token its connection carried, so
+// naming each one would produce hundreds of records that cannot be collapsed.
+// The detail stays available one level down.
+func TestTheFlaggedTokenIsNamedOnlyAtDebug(t *testing.T) {
+	script := []testsupport.WSStep{
+		{Send: wsSnapshot111},
+		{After: 30 * time.Millisecond, Action: testsupport.WSDropConnection},
+	}
+
+	tests := []struct {
+		name      string
+		level     slog.Level
+		wantNamed bool
+	}{
+		{"info leaves the token off", slog.LevelInfo, false},
+		{"debug names the token", slog.LevelDebug, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ws := testsupport.NewFakeWS(t, script...)
+			rest := testsupport.NewFakeREST(t)
+			rest.ServeBook("111", levels("0.50", "7"), levels("0.55", "7"))
+
+			_, logs := collectLogging(t, tt.level, ws, rest, "111")
+
+			if !strings.Contains(logs, "token flagged") {
+				t.Fatalf("no flag was logged at all:\n%s", logs)
+			}
+			if got := strings.Contains(logs, "token=111"); got != tt.wantNamed {
+				t.Errorf("token named = %v, want %v:\n%s", got, tt.wantNamed, logs)
+			}
+		})
 	}
 }
 

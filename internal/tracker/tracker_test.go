@@ -541,6 +541,68 @@ func TestDiscoveredTokensAreFlaggedFromTheStart(t *testing.T) {
 	}
 }
 
+// A run has to be able to report trouble while it is happening, not only in the
+// document it writes at the end.
+func TestOnFlagReportsEachFlagOnceAsItIsRaised(t *testing.T) {
+	type raised struct {
+		tokenID string
+		flag    Flag
+	}
+
+	var seen []raised
+	tr := New("111", Options{
+		OnFlag: func(tokenID string, flag Flag) {
+			seen = append(seen, raised{tokenID, flag})
+		},
+	})
+
+	tr.ApplySnapshot(snapshotAt("1000"), at(0))
+
+	// Three disconnects, but the token is only newly disconnected once.
+	tr.NoteDisconnect()
+	tr.NoteDisconnect()
+	tr.NoteDisconnect()
+
+	tr.NoteDecodeError()
+
+	want := []raised{
+		{"111", FlagDisconnected},
+		{"111", FlagDecodeError},
+	}
+	if len(seen) != len(want) {
+		t.Fatalf("observer saw %v, want %v", seen, want)
+	}
+	for i, got := range seen {
+		if got != want[i] {
+			t.Errorf("observation %d = %+v, want %+v", i, got, want[i])
+		}
+	}
+}
+
+// The observer is told about a flag exactly when the document would carry it,
+// so the two can never disagree about what happened.
+func TestOnFlagMatchesTheFlagsInTheSnapshot(t *testing.T) {
+	var seen []Flag
+	tr := New("111", Options{
+		Discovered: true,
+		OnFlag:     func(_ string, flag Flag) { seen = append(seen, flag) },
+	})
+
+	tr.ApplySnapshot(snapshotAt("1000"), at(0))
+	tr.NoteDisconnect()
+	tr.NoteMarketResolved()
+
+	got := tr.Finalize(at(time.Minute))
+	if len(seen) != len(got.Flags) {
+		t.Fatalf("observer saw %v but the snapshot carries %v", seen, got.Flags)
+	}
+	for i, flag := range got.Flags {
+		if seen[i] != flag {
+			t.Errorf("observation %d = %q, snapshot has %q", i, seen[i], flag)
+		}
+	}
+}
+
 func TestMissingSnapshotIsCompleteAndEmpty(t *testing.T) {
 	got := Missing("999")
 

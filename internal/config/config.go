@@ -11,6 +11,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"net/url"
 	"time"
 )
@@ -135,6 +136,15 @@ type Config struct {
 
 	// LogLevel is the minimum severity written to stderr.
 	LogLevel string
+
+	// LogFile additionally appends every log line to a file as the run happens,
+	// uncoloured and untruncated. Empty disables it.
+	//
+	// It exists because stderr is only readable by whatever launched the
+	// process, which rules out watching a run in progress from anywhere else.
+	// The file is appended to and flushed per line, so it can be tailed while
+	// the run is still going rather than only after it exits.
+	LogFile string
 }
 
 // New returns a Config with every default applied and nothing else set.
@@ -153,6 +163,40 @@ func New() Config {
 		RESTURL:                DefaultRESTURL,
 		LogLevel:               defaultLogLevel,
 	}
+}
+
+// LogValue renders the whole configuration for a log record.
+//
+// It exists so that a run's settings are recorded once, in full, in the same
+// stream as everything else. Reading a log without them means guessing whether
+// a number is a symptom or the configured behaviour working exactly as asked:
+// eight reconnects is alarming at a 30s idle timeout and unremarkable at one of
+// 200ms, and nothing else in the log says which was in force.
+//
+// Every field is included, and none is redacted, because there is nothing here
+// to redact. The tool is credential-free by design (requirement A6): no API
+// keys, no wallet material, no order endpoints, ever. If that ever stops being
+// true, this method is the one place that has to change.
+func (c Config) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("tokens_path", c.TokensPath),
+		slog.String("out_path", c.OutPath),
+		slog.Duration("duration", c.Duration),
+		slog.Duration("grace", c.Grace),
+		slog.Bool("rest_only", c.RESTOnly),
+		slog.Float64("rest_rate", c.RESTRate),
+		slog.Int("rest_batch_size", c.RESTBatchSize),
+		slog.Int("max_assets_per_connection", c.MaxAssetsPerConnection),
+		slog.Duration("ping_interval", c.PingInterval),
+		slog.Duration("idle_timeout", c.IdleTimeout),
+		slog.Duration("reorder_tolerance", c.ReorderTolerance),
+		slog.Bool("strict_best_bid_ask", c.StrictBestBidAsk),
+		slog.Int("discover_limit", c.DiscoverLimit),
+		slog.String("ws_url", c.WSURL),
+		slog.String("rest_url", c.RESTURL),
+		slog.String("log_level", c.LogLevel),
+		slog.String("log_file", c.LogFile),
+	)
 }
 
 // Validate reports the first problem with the configuration.

@@ -8,11 +8,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `--log-file`, which appends every log record to a file as the run happens.
+  stderr is only readable by whatever launched the process, so a run in progress
+  could not be followed from anywhere else. The file is appended to at mode
+  `0600` and written per record, so it can be tailed while the run is still
+  going.
+- Log records are rendered with a timestamp, a prefix and the run's identifier:
+  `[!]` error or warning, `[*]` info, `[~]` step or detail, `[+]` success, `[?]`
+  something needing a decision. Colour appears only when the destination is a
+  terminal.
+- The full resolved configuration is recorded once at startup, so a log can be
+  read without guessing whether a number is a symptom or the configured
+  behaviour working as asked.
+- Flags are reported the moment a tracker raises them, rather than only in the
+  document written at the end. Until now a run quietly losing trust in every
+  token looked exactly like a healthy one to anything watching it.
 - A scale test at 400 tokens, which is the size the consuming agent uses and the
   first case that produces more than one connection, and a test that memory does
   not grow with the number of updates received.
 
 ### Changed
+- Repeated log records are written once and then summarised with their count,
+  so a connection failing in a loop no longer buries everything else.
+- The output document's `errors` list collapses identical messages into one
+  entry carrying a count, and its cap now counts distinct messages rather than
+  occurrences. A connection redialling in a tight loop used to fill all five
+  hundred slots with one sentence and discard every later message, including the
+  ones explaining why the run ended.
 - Each shard now waits only for its own REST work when the window closes, rather
   than for every shard's, so one slow re-seed no longer holds the others through
   their whole drain allowance.
@@ -30,6 +52,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   map, and a websocket accessor no production caller used.
 
 ### Fixed
+- A frame that could not be decoded was quoted at 120 characters everywhere,
+  including in contexts with no reason to shorten it, so the evidence of what
+  the exchange actually sent was routinely cut off before the part that
+  mattered. Each destination now applies its own bound: the terminal shows a
+  couple of lines, the document a sentence, and the log file the whole thing.
+  Every one of them reports what it left out.
 - Mid-window discovery no longer switches itself off when the token list exactly
   fills a connection, which was the case at the consuming agent's documented
   configuration of 400 tokens.

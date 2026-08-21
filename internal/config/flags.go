@@ -89,6 +89,7 @@ func newFlagSet(cfg *Config, showVersion *bool) *flag.FlagSet {
 	fs.StringVar(&cfg.WSURL, "ws-url", cfg.WSURL, "")
 	fs.StringVar(&cfg.RESTURL, "rest-url", cfg.RESTURL, "")
 	fs.StringVar(&cfg.LogLevel, "log-level", cfg.LogLevel, "")
+	fs.StringVar(&cfg.LogFile, "log-file", cfg.LogFile, "")
 
 	return fs
 }

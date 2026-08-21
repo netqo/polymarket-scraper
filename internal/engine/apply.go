@@ -125,6 +125,12 @@ func (e *Engine) handleDecodeFailure(s *shardState, frame wsclient.Frame) {
 	e.errors.Addf("shard %d: a frame could not be decoded, so every token on it was re-seeded: %v",
 		s.id, frame.Err)
 
+	// Logged as well as recorded, because the two are bounded differently. The
+	// document keeps a sentence; this keeps whatever the frame actually said,
+	// which is the only evidence of what the exchange sent.
+	e.logger.Warn("a frame could not be decoded, so every token on it was re-seeded",
+		"shard", s.id, "error", frame.Err)
+
 	for _, t := range s.trackers {
 		e.act(s, t, t.NoteDecodeError())
 	}

@@ -29,6 +29,19 @@ type Options struct {
 	// Discovered records that the token was picked up from an announcement
 	// during the run rather than requested.
 	Discovered bool
+
+	// OnFlag is called the first time each flag is raised for this token, and
+	// never for a repeat of one already raised.
+	//
+	// It exists so that a run can report trouble while it is happening rather
+	// than only in the document it writes at the end. A callback rather than a
+	// logger field keeps this package free of I/O and of any knowledge of how a
+	// record is rendered, which is what lets the trust rules be verified with
+	// no clock, no network and no concurrency in the way.
+	//
+	// It runs on whichever goroutine owns the tracker, so it must not block.
+	// Nil disables it.
+	OnFlag func(tokenID string, flag Flag)
 }
 
 // Tracker holds the state of one token.
@@ -497,9 +510,19 @@ func (t *Tracker) notePriceParsing(sides ...[]book.Level) {
 
 // flag records an observation once. Flags keep first-occurrence order, which
 // makes a failing test read like the sequence of events that produced it.
+//
+// The observer is notified only for a flag that is genuinely new, so a token
+// whose connection drops repeatedly reports the fact once rather than on every
+// attempt.
 func (t *Tracker) flag(f Flag) {
-	if !slices.Contains(t.flags, f) {
-		t.flags = append(t.flags, f)
+	if slices.Contains(t.flags, f) {
+		return
+	}
+
+	t.flags = append(t.flags, f)
+
+	if t.opts.OnFlag != nil {
+		t.opts.OnFlag(t.tokenID, f)
 	}
 }
 

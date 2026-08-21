@@ -154,7 +154,51 @@ func (e *Engine) trackerOptions() tracker.Options {
 		ReorderTolerance: e.cfg.ReorderTolerance,
 		StrictBestBidAsk: e.cfg.StrictBestBidAsk,
 		RESTOnly:         e.cfg.RESTOnly,
+		OnFlag:           e.logFlag,
 	}
+}
+
+// seriousFlags are the observations worth interrupting someone for.
+//
+// The rest are recorded at info: they describe things the scraper noticed and
+// handled correctly, and a run that reported all of them as warnings would
+// train whoever reads it to ignore warnings.
+var seriousFlags = map[tracker.Flag]bool{
+	tracker.FlagDeltaGap:           true,
+	tracker.FlagDisconnected:       true,
+	tracker.FlagDecodeError:        true,
+	tracker.FlagCrossedBook:        true,
+	tracker.FlagTokenNotFound:      true,
+	tracker.FlagBestBidAskMismatch: true,
+	tracker.FlagUnparsablePrice:    true,
+}
+
+// logFlag reports a flag the moment a tracker raises it.
+//
+// Flags reach the output document either way, but the document only exists once
+// the run is over. Until then a run quietly accumulating delta_gap on every
+// token looks exactly like a healthy one, which is the opposite of what someone
+// watching it needs.
+//
+// The token is named only at debug. One disconnect raises the same flag on
+// every token its connection carried, so naming each one produces hundreds of
+// records that cannot be collapsed and that bury everything else; leaving it
+// off lets them coalesce into a single line and a count. The per-token detail
+// is still available, one level down, for reconstructing a specific book's
+// history.
+func (e *Engine) logFlag(tokenID string, flag tracker.Flag) {
+	level := slog.LevelInfo
+	if seriousFlags[flag] {
+		level = slog.LevelWarn
+	}
+
+	ctx := context.Background()
+	if e.logger.Enabled(ctx, slog.LevelDebug) {
+		e.logger.Log(ctx, level, "token flagged", "flag", string(flag), "token", tokenID)
+		return
+	}
+
+	e.logger.Log(ctx, level, "token flagged", "flag", string(flag))
 }
 
 // newTrackers builds one tracker per requested token, for the rest-only path
