@@ -56,9 +56,72 @@ func TestProcessLoggerWritesToTheGivenWriter(t *testing.T) {
 
 	proc.logger.Info("hello", "key", "value")
 
-	if got := buf.String(); !strings.Contains(got, "hello key=value") {
+	got := buf.String()
+	if !strings.Contains(got, "hello") || !strings.Contains(got, "key=value") {
 		t.Fatalf("log record = %q, want the message and its attribute", got)
 	}
+}
+
+// Successive runs append into the same log file, so without an identifier their
+// lines become indistinguishable as soon as the timestamps get close.
+func TestProcessLoggerTagsEveryRecordWithTheRun(t *testing.T) {
+	var buf bytes.Buffer
+
+	proc, err := newProcessLogger(&buf, loggerConfig(levelInfo, ""))
+	if err != nil {
+		t.Fatalf("newProcessLogger returned error: %v", err)
+	}
+	defer proc.Close()
+
+	proc.logger.Info("first")
+	proc.logger.Info("second")
+
+	ids := runIDs(t, buf.String())
+	if len(ids) != 2 {
+		t.Fatalf("found %d run identifiers in %q, want one per record", len(ids), buf.String())
+	}
+	if ids[0] != ids[1] {
+		t.Errorf("records carry different run identifiers %q and %q", ids[0], ids[1])
+	}
+	if ids[0] == "unknown" {
+		t.Error("the run identifier fell back to its failure value")
+	}
+}
+
+// Two loggers are two runs, or a log file shared between them tells no one
+// anything.
+func TestProcessLoggerGivesEachRunItsOwnIdentifier(t *testing.T) {
+	var first, second bytes.Buffer
+
+	for _, buf := range []*bytes.Buffer{&first, &second} {
+		proc, err := newProcessLogger(buf, loggerConfig(levelInfo, ""))
+		if err != nil {
+			t.Fatalf("newProcessLogger returned error: %v", err)
+		}
+		proc.logger.Info("hello")
+		proc.Close()
+	}
+
+	if runIDs(t, first.String())[0] == runIDs(t, second.String())[0] {
+		t.Errorf("two runs share the identifier %q", runIDs(t, first.String())[0])
+	}
+}
+
+// runIDs extracts the run attribute from each line of rendered output.
+func runIDs(t *testing.T, rendered string) []string {
+	t.Helper()
+
+	var ids []string
+	for _, line := range strings.Split(strings.TrimSpace(rendered), "\n") {
+		_, after, found := strings.Cut(line, runKey+"=")
+		if !found {
+			t.Fatalf("line %q carries no %s attribute", line, runKey)
+		}
+		id, _, _ := strings.Cut(after, " ")
+		ids = append(ids, id)
+	}
+
+	return ids
 }
 
 func TestProcessLoggerRespectsLevel(t *testing.T) {
@@ -117,12 +180,12 @@ func TestProcessLoggerWritesTheFileAsTheRunHappens(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading the log file mid-run: %v", err)
 	}
-	if !strings.Contains(string(contents), "collecting tokens=400") {
+	if !strings.Contains(string(contents), "tokens=400") {
 		t.Errorf("log file = %q, want the record already on disk", contents)
 	}
 
 	// Both destinations see it.
-	if !strings.Contains(buf.String(), "collecting tokens=400") {
+	if !strings.Contains(buf.String(), "tokens=400") {
 		t.Errorf("stderr = %q, want the record as well", buf.String())
 	}
 }

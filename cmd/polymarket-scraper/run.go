@@ -12,6 +12,7 @@ import (
 
 	"github.com/netqo/polymarket-scraper/internal/config"
 	"github.com/netqo/polymarket-scraper/internal/engine"
+	"github.com/netqo/polymarket-scraper/internal/logging"
 	"github.com/netqo/polymarket-scraper/internal/report"
 	"github.com/netqo/polymarket-scraper/internal/tokenlist"
 )
@@ -67,6 +68,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	defer proc.Close()
 
 	logger := proc.logger
+
+	// Recorded before anything can fail, so that even a run that dies loading
+	// its token list leaves behind what it was asked to do.
+	logging.Step(logger, "starting", "version", buildVersion(), "config", cfg)
 
 	tokens, err := tokenlist.Load(cfg.TokensPath)
 	if err != nil {

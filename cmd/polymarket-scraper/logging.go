@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
@@ -78,10 +80,37 @@ func newProcessLogger(stderr io.Writer, cfg config.Config) (*processLogger, erro
 	coalescer := logging.NewCoalescer(logging.NewTee(console, fileHandler))
 
 	return &processLogger{
-		logger:    slog.New(coalescer),
+		logger:    slog.New(coalescer).With(runKey, newRunID()),
 		coalescer: coalescer,
 		file:      file,
 	}, nil
+}
+
+// runKey is the attribute identifying which run a record belongs to.
+const runKey = "run"
+
+// runIDBytes is how much randomness a run identifier carries. Four bytes is
+// eight hex characters: short enough not to crowd every line, and far more than
+// enough to tell apart the handful of runs that might share one log file.
+const runIDBytes = 4
+
+// newRunID returns a short random identifier for this run.
+//
+// Every record carries it, which is what makes an appended log file usable:
+// successive runs write into the same file, and without this their lines would
+// be indistinguishable once the timestamps got close together.
+//
+// Random rather than a counter or a timestamp. A counter would need state kept
+// between invocations, which the process does not have, and two runs launched
+// by the same script can share a millisecond.
+func newRunID() string {
+	var raw [runIDBytes]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		// Not being able to name the run is not a reason to refuse to do it.
+		return "unknown"
+	}
+
+	return hex.EncodeToString(raw[:])
 }
 
 // openLogFile opens the run's log for appending.
