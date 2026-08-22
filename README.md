@@ -140,6 +140,9 @@ a run and checks that the output path is never observed truncated.
 - Conventional Commits. Git Flow simplified: `dev` integrates work, `main`
   receives tagged release merges, and PRs to `dev` need green CI.
 - Dependencies pinned exactly; `go.sum` and `flake.lock` committed.
+- Connections are sharded well below the width at which the server silently
+  stops honouring a subscription, and another is opened if discovery fills the
+  ones that exist.
 - Structured logging with `log/slog`, always to stderr, rendered by
   `internal/logging`: one prefixed line per record, colour only on a terminal,
   and repeats collapsed into a count.

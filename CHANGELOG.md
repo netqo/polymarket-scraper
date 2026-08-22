@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Discovery opens another websocket connection when every existing one has
+  reached the width the server will honour. Reaching that ceiling used to stop
+  discovery outright, which quietly ended collection of the short-duration
+  markets that discovery exists to catch. Growth is bounded by how many
+  connections the discovery budget could need.
+- `websocket.discover_match`, a regular expression narrowing discovery to
+  announcements whose question or slug matches it. The feed carries no series
+  field, so following the short-duration markets means matching on how they are
+  worded, and which markets matter is a question about a trading strategy rather
+  than about this program.
 - `PROTOCOL.md`, describing what the exchange sends: connecting and subscribing,
   the keepalive, the two frame shapes, every event type with a payload captured
   from the live API, the REST endpoints, and the decimal handling. The places
@@ -60,6 +70,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not grow with the number of updates received.
 
 ### Changed
+- Reconnection backoff drops from 1s/8s to 250ms/4s. A dropped connection stops
+  delta delivery for every token it carried, and against a 90 second window the
+  old ceiling spent nearly a tenth of the run blind. Both remain settings.
+- REST retries stop on a status that will still be the answer next time. Only
+  404 was terminal before, so a 400, 401, 403, 413 or 422 was tried three times
+  over while the run's deadline ran down. 429 and 408 stay retryable, as does
+  every 5xx.
 - Repeated log records are written once and then summarised with their count,
   so a connection failing in a loop no longer buries everything else.
 - The output document's `errors` list collapses identical messages into one

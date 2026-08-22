@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"sync/atomic"
 	"time"
 
@@ -61,6 +62,10 @@ type Engine struct {
 	errors *errorSink
 	events *eventLog
 
+	// discoverMatch narrows which announcements are acted on. Nil takes on
+	// everything. Compiled once, since it is consulted per announcement.
+	discoverMatch *regexp.Regexp
+
 	shards shardSet
 	resync chan resyncRequest
 
@@ -100,6 +105,11 @@ type Engine struct {
 // New builds an engine, failing before any work starts if the configuration
 // cannot produce a working client.
 func New(opts Options) (*Engine, error) {
+	discoverMatch, err := opts.Config.DiscoverPattern()
+	if err != nil {
+		return nil, err
+	}
+
 	rest, err := restclient.New(restclient.Options{
 		BaseURL:    opts.Config.RESTURL,
 		Rate:       opts.Config.RESTRate,
@@ -123,15 +133,16 @@ func New(opts Options) (*Engine, error) {
 	}
 
 	return &Engine{
-		cfg:        opts.Config,
-		tokens:     opts.Tokens,
-		logger:     logger,
-		now:        now,
-		httpClient: opts.HTTPClient,
-		halt:       halt,
-		rest:       rest,
-		errors:     newErrorSink(opts.Config),
-		events:     newEventLog(opts.Config.MaxEvents),
+		cfg:           opts.Config,
+		tokens:        opts.Tokens,
+		logger:        logger,
+		now:           now,
+		httpClient:    opts.HTTPClient,
+		halt:          halt,
+		rest:          rest,
+		discoverMatch: discoverMatch,
+		errors:        newErrorSink(opts.Config),
+		events:        newEventLog(opts.Config.MaxEvents),
 		// Sized so every tracker that can exist can have a re-seed outstanding
 		// at once, which is exactly what a disconnect produces. Discovered
 		// tokens are counted too: they use this queue as well, and a queue that

@@ -33,6 +33,9 @@ func (e *Engine) admitAnnounced(s *shardState, event wire.NewMarket, at time.Tim
 	if e.cfg.DiscoverLimit <= 0 || e.discoveryClosed.Load() {
 		return
 	}
+	if !e.wanted(event) {
+		return
+	}
 
 	for _, assetID := range e.newTokens(s, event) {
 		// The budget is claimed before a home is found, and given back if none
@@ -51,6 +54,21 @@ func (e *Engine) admitAnnounced(s *shardState, event wire.NewMarket, at time.Tim
 			return
 		}
 	}
+}
+
+// wanted reports whether an announcement is one this run cares about.
+//
+// The feed carries no series field, so the only thing to match on is how the
+// market is worded. That is why the pattern is configuration: which markets
+// matter is a question about a trading strategy, not about this program, and a
+// build that hardcoded "Up or Down" would be wrong the day Polymarket renamed
+// something.
+func (e *Engine) wanted(event wire.NewMarket) bool {
+	if e.discoverMatch == nil {
+		return true
+	}
+
+	return e.discoverMatch.MatchString(event.Question) || e.discoverMatch.MatchString(event.Slug)
 }
 
 // newTokens picks out the tokens of an announcement worth taking on.

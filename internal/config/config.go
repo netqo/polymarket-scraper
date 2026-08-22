@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"regexp"
 	"time"
 )
 
@@ -213,6 +214,17 @@ type Config struct {
 	// because reporting them is required and subscribing to them is not.
 	DiscoverLimit int
 
+	// DiscoverMatch narrows discovery to announcements whose question or slug
+	// matches this regular expression. Empty takes on everything.
+	//
+	// It is a pattern rather than a list of series names because the feed
+	// carries no series field: the short-duration markets are recognisable only
+	// by how they are worded, and what that wording is belongs to whoever is
+	// running the scraper rather than to this build. Kept as text rather than a
+	// compiled expression so that Config stays comparable; the engine compiles
+	// it once.
+	DiscoverMatch string
+
 	// WSURL and RESTURL are the endpoints to talk to.
 	WSURL   string
 	RESTURL string
@@ -316,6 +328,24 @@ func New() Config {
 	}
 }
 
+// DiscoverPattern compiles the discovery filter, returning nil when everything
+// should be taken on.
+//
+// Compiling is how the pattern is validated, so a mistyped expression is a
+// startup error rather than a filter that silently matches nothing.
+func (c Config) DiscoverPattern() (*regexp.Regexp, error) {
+	if c.DiscoverMatch == "" {
+		return nil, nil
+	}
+
+	pattern, err := regexp.Compile(c.DiscoverMatch)
+	if err != nil {
+		return nil, fmt.Errorf("websocket.discover_match is not a valid regular expression: %w", err)
+	}
+
+	return pattern, nil
+}
+
 // LogValue renders the whole configuration for a log record.
 //
 // It exists so that a run's settings are recorded once, in full, in the same
@@ -343,6 +373,7 @@ func (c Config) LogValue() slog.Value {
 		slog.Duration("reorder_tolerance", c.ReorderTolerance),
 		slog.Bool("strict_best_bid_ask", c.StrictBestBidAsk),
 		slog.Int("discover_limit", c.DiscoverLimit),
+		slog.String("discover_match", c.DiscoverMatch),
 		slog.String("ws_url", c.WSURL),
 		slog.String("rest_url", c.RESTURL),
 		slog.String("log_level", c.LogLevel),
@@ -411,6 +442,9 @@ func (c Config) Validate() error {
 	}
 	if c.DiscoverLimit < 0 {
 		return fmt.Errorf("--discover-limit must not be negative, got %d: use 0 to disable discovery", c.DiscoverLimit)
+	}
+	if _, err := c.DiscoverPattern(); err != nil {
+		return err
 	}
 
 	if err := validateURL("--ws-url", c.WSURL, "ws", "wss"); err != nil {

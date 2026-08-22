@@ -86,6 +86,7 @@ type websocketSection struct {
 	ReorderTolerance        *duration `toml:"reorder_tolerance"`
 	StrictBestBidAsk        *bool     `toml:"strict_best_bid_ask"`
 	DiscoverLimit           *int      `toml:"discover_limit"`
+	DiscoverMatch           *string   `toml:"discover_match"`
 	ReconnectInitialBackoff *duration `toml:"reconnect_initial_backoff"`
 	ReconnectMaxBackoff     *duration `toml:"reconnect_max_backoff"`
 	ReadLimit               *int64    `toml:"read_limit"`
@@ -212,6 +213,7 @@ func (f *file) apply(cfg *Config) {
 		assignDuration(&cfg.ReorderTolerance, s.ReorderTolerance)
 		assign(&cfg.StrictBestBidAsk, s.StrictBestBidAsk)
 		assign(&cfg.DiscoverLimit, s.DiscoverLimit)
+		assign(&cfg.DiscoverMatch, s.DiscoverMatch)
 		assignDuration(&cfg.ReconnectInitialBackoff, s.ReconnectInitialBackoff)
 		assignDuration(&cfg.ReconnectMaxBackoff, s.ReconnectMaxBackoff)
 		assign(&cfg.ReadLimit, s.ReadLimit)

@@ -372,3 +372,61 @@ func TestDiscoveryStillWorksOnAFullShortlist(t *testing.T) {
 			discoveredCount(shard), engine.errors.Messages())
 	}
 }
+
+// The feed carries no series field, so following the short-duration markets
+// means matching on how they are worded. That belongs to whoever is running the
+// scraper, not to this build.
+func TestDiscoveryCanBeNarrowedToMatchingAnnouncements(t *testing.T) {
+	tests := []struct {
+		name     string
+		pattern  string
+		question string
+		slug     string
+		wantTake bool
+	}{
+		{"no pattern takes everything", "", "Some Election 2028", "election", true},
+		{"question matches", "(?i)up or down", "Bitcoin Up or Down - Aug 14, 3:15PM ET", "btc-updown", true},
+		{"slug matches", "up-or-down", "Bitcoin hourly", "btc-up-or-down", true},
+		{"neither matches", "(?i)up or down", "Some Election 2028", "election", false},
+		{"case matters unless asked otherwise", "up or down", "Bitcoin Up or Down", "btc", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rest := testsupport.NewFakeREST(t)
+			cfg := websocketConfig("ws://127.0.0.1:1/none", rest.URL())
+			cfg.DiscoverLimit = 100
+			cfg.DiscoverMatch = tt.pattern
+
+			engine, err := New(Options{Config: cfg, Tokens: tokenlist.List{IDs: []string{"111"}}})
+			if err != nil {
+				t.Fatalf("New returned error: %v", err)
+			}
+			armDiscovery(t, engine)
+
+			shard := newShardState(0, []string{"111"}, tracker.Options{})
+			engine.admitAnnounced(shard, wire.NewMarket{
+				ID:       "1",
+				Question: tt.question,
+				Slug:     tt.slug,
+				AssetIDs: wire.StringList{"777"},
+			}, time.Now())
+
+			if took := discoveredCount(shard) > 0; took != tt.wantTake {
+				t.Errorf("took the announcement = %v, want %v", took, tt.wantTake)
+			}
+		})
+	}
+}
+
+// A mistyped expression must stop the run rather than silently matching
+// nothing, which would look exactly like a quiet announcement feed.
+func TestAnInvalidDiscoveryPatternIsRejected(t *testing.T) {
+	rest := testsupport.NewFakeREST(t)
+	cfg := websocketConfig("ws://127.0.0.1:1/none", rest.URL())
+	cfg.DiscoverMatch = "up or down("
+
+	if _, err := New(Options{Config: cfg, Tokens: tokenlist.List{IDs: []string{"111"}}}); err == nil {
+		t.Fatal("New accepted an invalid discovery pattern")
+	}
+}

@@ -94,6 +94,19 @@ strict_best_bid_ask = false
 # budget a long run would gradually subscribe to every market on the exchange.
 discover_limit = 100
 
+# Narrow discovery to announcements whose question or slug matches this regular
+# expression. Empty takes on everything.
+#
+# The feed carries no series field, so the only thing to match on is how a
+# market is worded. Which markets matter is a question about a trading strategy
+# rather than about this program, which is why it is a pattern here rather than
+# a list of series names compiled into the binary.
+#
+# To follow only the short-duration crypto series, something like:
+#   discover_match = "(?i)up or down"
+# A mistyped expression is a startup error, not a filter that matches nothing.
+discover_match = ""
+
 # Wait between redial attempts on a dropped connection.
 #
 # Deliberately short. A drop stops delta delivery for every token the connection
