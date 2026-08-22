@@ -1,3 +1,6 @@
+// Test data: Invented documents. What is under test is the filesystem behaviour of the write,
+// which has nothing to do with what the document contains.
+
 package report
 
 import (

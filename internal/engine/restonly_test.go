@@ -1,3 +1,7 @@
+// Test data: Invented books served by an in-process fake. What is under test is that a token
+// that cannot be fetched is reported as a failure rather than as an absence of
+// liquidity, which needs a server that fails on request.
+
 package engine
 
 import (

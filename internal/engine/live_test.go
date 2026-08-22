@@ -1,5 +1,10 @@
 //go:build live
 
+// Test data: real, which is the point. Everything else in this package runs
+// against in-process fakes, because the failures worth testing are ones the
+// exchange will not perform on request. This file covers the other half: whether
+// the design matches the exchange at all.
+//
 // These tests reach the real Polymarket API. They are a manual gate, never a CI
 // gate, and they skip themselves unless POLYMARKET_LIVE_TOKENS names a token
 // file.

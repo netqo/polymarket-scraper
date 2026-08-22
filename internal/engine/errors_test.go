@@ -1,3 +1,6 @@
+// Test data: Invented messages. What is under test is collapsing, capping and truncation,
+// which hold whatever the text says.
+
 package engine
 
 import (

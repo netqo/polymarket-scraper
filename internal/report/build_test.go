@@ -1,3 +1,7 @@
+// Test data: Invented snapshots, with values chosen to be hostile: a price no float64 can hold
+// exactly, and sizes with trailing zeros that must survive. The token ids are real
+// in shape only.
+
 package report
 
 import (

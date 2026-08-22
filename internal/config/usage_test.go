@@ -1,3 +1,6 @@
+// Test data: Invented data. This checks the help text against the flags it documents, in both
+// directions.
+
 package config
 
 import (

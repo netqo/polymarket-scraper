@@ -1,3 +1,8 @@
+// Test data: Invented prices, with one exception worth knowing about: the ordering tests feed
+// the order the live API actually sends, which is the opposite of what its
+// documentation claims. See PROTOCOL.md. Everything else here is a property of the
+// data structure and holds for any prices at all.
+
 package book
 
 import (

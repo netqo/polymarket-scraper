@@ -1,3 +1,7 @@
+// Test data: captured from the live REST endpoints. The three fields the
+// websocket never sends are the reason this endpoint is part of every run rather
+// than only a fallback. See PROTOCOL.md.
+
 package wire
 
 import (

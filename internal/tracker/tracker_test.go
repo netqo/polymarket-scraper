@@ -1,3 +1,7 @@
+// Test data: Invented books and updates. What is under test is the trust state machine, and
+// the events that drive it -- a disconnect, a decode failure, an update far out of
+// order -- are ones the real exchange will not produce on request.
+
 package tracker
 
 import (

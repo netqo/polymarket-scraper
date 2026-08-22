@@ -1,3 +1,5 @@
+// Test data: Invented data. A mode is a bundle of this program's defaults.
+
 package config
 
 import (

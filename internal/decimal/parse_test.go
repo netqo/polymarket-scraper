@@ -1,3 +1,7 @@
+// Test data: Invented values, but the valid cases list the shapes the Polymarket feed actually
+// emits, and the overflow cases are sizes it can genuinely produce. Whether it ever
+// emits the invalid ones is an open question recorded in the working notes.
+
 package decimal
 
 import (

@@ -1,3 +1,9 @@
+// Test data: Invented responses from an in-process fake. What is under test is pacing,
+// retries, backoff and which statuses are terminal, all of which need a server
+// that fails on demand and in a specified way. Which statuses the exchange
+// actually returns, and with what bodies, is an open question recorded in the
+// working notes.
+
 package restclient
 
 import (

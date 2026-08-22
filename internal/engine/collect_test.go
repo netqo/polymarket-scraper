@@ -1,3 +1,13 @@
+// Test data: Frames here are hand-written, modelled on the payloads captured in
+// internal/wire/frame_test.go. They are written out rather than generated so a
+// failure shows the exact bytes that produced it.
+//
+// The behaviour under test cannot be arranged against the real exchange at all:
+// a connection dropping mid-window, a connection going silent while staying
+// open, and a re-seed failing on demand. That is what internal/testsupport is
+// for. The live suite covers the other half, that the design matches the
+// exchange.
+
 package engine
 
 import (

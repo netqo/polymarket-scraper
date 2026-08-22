@@ -1,3 +1,7 @@
+// Test data: Invented ids, except realID, which is a real Polymarket token id. It is here
+// because its length is the point: 77 decimal digits cannot survive being read as
+// a JSON number, which is why an array of numbers is refused outright.
+
 package tokenlist
 
 import (

@@ -1,3 +1,5 @@
+// Test data: Invented records. Rendering is entirely this program's concern.
+
 package logging
 
 import (

@@ -1,3 +1,7 @@
+// Test data: The expected messages are what this build sends, checked byte for byte. The
+// custom feature flag is not invented: without it the connection never delivers
+// three of the events the output document is required to report.
+
 package wire
 
 import (

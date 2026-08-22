@@ -1,3 +1,5 @@
+// Test data: Invented data. The command line is this program's own surface.
+
 package config
 
 import (

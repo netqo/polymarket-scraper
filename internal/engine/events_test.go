@@ -1,3 +1,8 @@
+// Test data: Announcement frames hand-written, modelled on the payloads captured in
+// internal/wire/frame_test.go. Deduplication is the point, and it matters because
+// the announcement feed is global rather than filtered to the subscription, so
+// every connection sees the same event.
+
 package engine
 
 import (

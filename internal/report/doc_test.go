@@ -1,3 +1,6 @@
+// Test data: No data at all. This checks SCHEMA.md against the document type in both
+// directions.
+
 package report
 
 import (

@@ -1,3 +1,6 @@
+// Test data: Invented data. This checks the machine-readable help against the flag set it is
+// derived from.
+
 package config
 
 import (

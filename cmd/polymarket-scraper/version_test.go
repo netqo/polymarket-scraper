@@ -1,3 +1,5 @@
+// Test data: Invented data. Build metadata comes from the toolchain, not the exchange.
+
 package main
 
 import (

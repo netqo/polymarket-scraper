@@ -1,3 +1,5 @@
+// Test data: Invented records. Categories are this program's own vocabulary.
+
 package logging
 
 import (

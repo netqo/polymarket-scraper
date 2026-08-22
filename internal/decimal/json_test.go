@@ -1,3 +1,7 @@
+// Test data: Invented values. What is under test is that whatever went in comes out byte for
+// byte, which has to hold for inputs the exchange has never sent as much as for
+// ones it has.
+
 package decimal
 
 import (

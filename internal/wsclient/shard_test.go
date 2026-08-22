@@ -1,3 +1,8 @@
+// Test data: Frames hand-written, modelled on the payloads captured in frame_test.go. The
+// behaviours under test are ones the real server will not perform on request: an
+// abrupt drop, going silent while the socket stays open, and accepting a
+// subscription without ever sending its snapshot.
+
 package wsclient
 
 import (

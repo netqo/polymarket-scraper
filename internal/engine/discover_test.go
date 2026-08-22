@@ -1,3 +1,8 @@
+// Test data: Invented announcements, shaped like the captured ones in
+// internal/wire/frame_test.go. What is under test is which tokens a run takes on
+// and where it puts them, which is this program's policy rather than the
+// exchange's.
+
 package engine
 
 import (

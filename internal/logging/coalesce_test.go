@@ -1,3 +1,6 @@
+// Test data: Invented records. What is under test is suppression and counting, which hold
+// whatever the message says.
+
 package logging
 
 import (

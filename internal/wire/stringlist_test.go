@@ -1,3 +1,7 @@
+// Test data: Both encodings here are real: Polymarket serialises list-valued fields as an
+// array on some endpoints and as a string containing an array on others. See
+// PROTOCOL.md.
+
 package wire
 
 import (

@@ -1,3 +1,6 @@
+// Test data: Invented settings files. What is under test is the precedence chain and the
+// refusal of unknown keys, neither of which the exchange has an opinion about.
+
 package config
 
 import (
