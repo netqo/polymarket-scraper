@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `PROTOCOL.md`, describing what the exchange sends: connecting and subscribing,
+  the keepalive, the two frame shapes, every event type with a payload captured
+  from the live API, the REST endpoints, and the decimal handling. The places
+  where the live API contradicts its own published documentation are marked,
+  because every one of them fails silently. A test holds the document to the
+  code, the way `SCHEMA.md` is held.
+- `--help=json`, returning the command line contract as data: the flags and
+  their defaults, the environment variables, the exit codes with their meanings,
+  and the settings file's sections, modes and log categories. The prose is
+  included whole rather than chopped into fields. Everything else is derived
+  from the code, so a flag cannot exist without appearing in it.
 - Log records are grouped into categories that can be switched off
   independently in the settings file, under `[logging.categories]`: `startup`,
   `progress`, `connection`, `flags`, `rest`, `decode` and `discovery`. Level is
