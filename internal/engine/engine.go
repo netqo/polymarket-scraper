@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"sync/atomic"
 	"time"
 
@@ -61,8 +62,21 @@ type Engine struct {
 	errors *errorSink
 	events *eventLog
 
-	shards []*shardState
+	// discoverMatch narrows which announcements are acted on. Nil takes on
+	// everything. Compiled once, since it is consulted per announcement.
+	discoverMatch *regexp.Regexp
+
+	shards shardSet
 	resync chan resyncRequest
+
+	// running is what a shard needs to be started into. It is set once, before
+	// any shard goroutine exists, and only read afterwards. Discovery reads it
+	// when it has to grow a connection.
+	//
+	// Contexts in a struct are usually a smell. The alternative here is
+	// threading two of them plus a channel through every layer between the
+	// apply loop and the announcement that needs them, to reach one call site.
+	running *collection
 
 	// requested is the set of tokens the run was asked for, which is what the
 	// completeness guarantee is measured against.
@@ -71,16 +85,31 @@ type Engine struct {
 	// discovered counts tokens taken on from announcements, across all shards.
 	discovered atomic.Int64
 
+	// discoveryClosed stops any further announced token being taken on, whether
+	// because the budget is spent, every connection is full, or the sweep has
+	// arrived. Engine-wide rather than per shard, because an announcement seen
+	// by one connection can now be placed on another.
+	discoveryClosed atomic.Bool
+
 	reconnects  atomic.Int64
 	restResyncs atomic.Int64
 
 	// restSeeded counts books taken over REST in a rest-only run.
 	restSeeded int
+
+	// initialShards is how many connections the token list alone needed. Fixed
+	// once buildShards has run, so it can be read without touching the set.
+	initialShards int
 }
 
 // New builds an engine, failing before any work starts if the configuration
 // cannot produce a working client.
 func New(opts Options) (*Engine, error) {
+	discoverMatch, err := opts.Config.DiscoverPattern()
+	if err != nil {
+		return nil, err
+	}
+
 	rest, err := restclient.New(restclient.Options{
 		BaseURL:    opts.Config.RESTURL,
 		Rate:       opts.Config.RESTRate,
@@ -104,15 +133,16 @@ func New(opts Options) (*Engine, error) {
 	}
 
 	return &Engine{
-		cfg:        opts.Config,
-		tokens:     opts.Tokens,
-		logger:     logger,
-		now:        now,
-		httpClient: opts.HTTPClient,
-		halt:       halt,
-		rest:       rest,
-		errors:     newErrorSink(opts.Config),
-		events:     newEventLog(opts.Config.MaxEvents),
+		cfg:           opts.Config,
+		tokens:        opts.Tokens,
+		logger:        logger,
+		now:           now,
+		httpClient:    opts.HTTPClient,
+		halt:          halt,
+		rest:          rest,
+		discoverMatch: discoverMatch,
+		errors:        newErrorSink(opts.Config),
+		events:        newEventLog(opts.Config.MaxEvents),
 		// Sized so every tracker that can exist can have a re-seed outstanding
 		// at once, which is exactly what a disconnect produces. Discovered
 		// tokens are counted too: they use this queue as well, and a queue that
@@ -146,8 +176,10 @@ func (e *Engine) buildShards() {
 	opts := e.trackerOptions()
 
 	for _, assetIDs := range chunk(e.tokens.IDs, e.cfg.MaxAssetsPerConnection) {
-		e.shards = append(e.shards, newShardState(len(e.shards), assetIDs, opts))
+		e.shards.add(newShardState(e.shards.count(), assetIDs, opts))
 	}
+
+	e.initialShards = e.shards.count()
 }
 
 func (e *Engine) trackerOptions() tracker.Options {
@@ -247,7 +279,7 @@ func (e *Engine) finalizeDocument(startedAt, finishedAt time.Time, snapshots map
 		Snapshots:  requested,
 		Discovered: discovered,
 		Connection: report.Connection{
-			WSConnections: len(e.shards),
+			WSConnections: e.shards.count(),
 			Reconnects:    int(e.reconnects.Load()),
 			RESTRequests:  e.rest.Requests(),
 			RESTResyncs:   int(e.restResyncs.Load()) + e.restSeeded,
@@ -255,6 +287,33 @@ func (e *Engine) finalizeDocument(startedAt, finishedAt time.Time, snapshots map
 		Events: e.events.events(),
 		Errors: e.errors.Messages(),
 	})
+}
+
+// collection is the running state a shard is started into.
+type collection struct {
+	collectCtx context.Context
+	drainCtx   context.Context
+	results    chan<- shardResult
+}
+
+// maxShards bounds how many connections a run can end up with.
+//
+// The token list decides the starting count; discovery can add enough to hold
+// everything its budget allows. The bound matters because the results channel
+// is sized from it, and a send onto a full one would block an apply goroutine,
+// which is the one thing that must never happen.
+//
+// It reads initialShards rather than counting the set, because it is called
+// while the set's own lock is held and a RWMutex is not reentrant.
+func (e *Engine) maxShards() int {
+	if e.cfg.DiscoverLimit <= 0 || e.cfg.MaxAssetsPerConnection <= 0 {
+		return e.initialShards
+	}
+
+	perConnection := e.cfg.MaxAssetsPerConnection
+	extra := (e.cfg.DiscoverLimit + perConnection - 1) / perConnection
+
+	return e.initialShards + extra
 }
 
 // requestedSet indexes the token list for membership tests.

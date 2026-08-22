@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -91,6 +92,61 @@ func TestBookReportsAnUnknownTokenDistinctlyAndDoesNotRetryIt(t *testing.T) {
 	}
 	if fake.Requests() != 1 {
 		t.Errorf("the client made %d requests for an unknown token, want 1", fake.Requests())
+	}
+}
+
+// A 4xx other than the two exceptions is the server saying the request itself
+// is wrong. Asking the same question twice more gets the same answer while the
+// run's deadline runs down.
+func TestTerminalStatusesAreNotRetried(t *testing.T) {
+	tests := []struct {
+		name      string
+		status    int
+		wantTries int
+	}{
+		{"bad request", http.StatusBadRequest, 1},
+		{"unauthorized", http.StatusUnauthorized, 1},
+		{"forbidden", http.StatusForbidden, 1},
+		{"payload too large", http.StatusRequestEntityTooLarge, 1},
+		{"unprocessable", http.StatusUnprocessableEntity, 1},
+
+		// An instruction to come back later, not a disagreement.
+		{"too many requests", http.StatusTooManyRequests, 3},
+		// The server gave up waiting rather than objecting.
+		{"request timeout", http.StatusRequestTimeout, 3},
+		// A server having a bad moment is the case retrying exists for.
+		{"internal error", http.StatusInternalServerError, 3},
+		{"bad gateway", http.StatusBadGateway, 3},
+		{"unavailable", http.StatusServiceUnavailable, 3},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fake := testsupport.NewFakeREST(t)
+			fake.Serve("111", testsupport.RESTBehaviour{AlwaysFail: true, Status: tt.status})
+
+			if _, err := fastClient(t, fake).Book(context.Background(), "111"); err == nil {
+				t.Fatalf("Book succeeded against a server returning %d", tt.status)
+			}
+			if got := fake.Requests(); got != tt.wantTries {
+				t.Errorf("made %d requests for status %d, want %d", got, tt.status, tt.wantTries)
+			}
+		})
+	}
+}
+
+// The message has to say which kind of failure it was, or an operator cannot
+// tell a request worth fixing from a server worth waiting out.
+func TestATerminalStatusSaysSo(t *testing.T) {
+	fake := testsupport.NewFakeREST(t)
+	fake.Serve("111", testsupport.RESTBehaviour{AlwaysFail: true, Status: http.StatusBadRequest})
+
+	_, err := fastClient(t, fake).Book(context.Background(), "111")
+	if err == nil {
+		t.Fatal("Book succeeded against a 400")
+	}
+	if !strings.Contains(err.Error(), "will not change on a retry") {
+		t.Errorf("error %q does not say the status is terminal", err)
 	}
 }
 
