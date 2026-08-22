@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its guarantees.
 
 ### Added
+- `make soak`, one live collection checked against a measured baseline: every
+  requested token current, no errors, no reconnects, and no flag outside the set
+  a three-minute census actually produced. Silent unless something deviates, so
+  it can be run on a timer. Anomaly detection rather than a test, aimed at the
+  failure that has cost this project the most: the exchange behaving differently
+  next week.
 - Announcements now report `sports_market_type`, `starts_at` and `min_tick_size`,
   in both the output document's `events.new_markets[]` and the change stream.
   `sports_market_type` is the only categorisation the feed offers and is null for

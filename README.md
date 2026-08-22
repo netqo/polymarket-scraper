@@ -135,6 +135,7 @@ make fmt             # format
 make lint            # gofmt diff, go vet, golangci-lint (fails on findings)
 make test            # offline suite under the race detector, no network
 make test-live       # //go:build live tests against the real API, manual gate
+make soak            # one live run, checked against the healthy baseline
 make acceptance-kill # SIGKILL a run repeatedly, check the output is never partial
 make image           # build the release container image from Nix
 ```
@@ -150,6 +151,13 @@ a server that behaves as expected, and every expensive surprise so far has been
 a place where the exchange differs from its own documentation.
 `acceptance-kill` kills the process with SIGKILL at a spread of moments through
 a run and checks that the output path is never observed truncated.
+
+`soak` runs one live collection and checks it against what a healthy run looks
+like: every requested token current, no errors, no reconnects, and no flag
+outside a set that was measured rather than guessed. It says nothing unless
+something deviates, which makes it usable on a timer. It is anomaly detection
+against a baseline, not a test: it catches "the exchange changed", and the
+offline suite catches "the logic is wrong". Neither replaces the other.
 
 ## Conventions
 

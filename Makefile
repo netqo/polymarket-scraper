@@ -32,7 +32,7 @@ clean: ## Remove build artifacts
 
 # Go targets (tools pinned by nix/flakes/go.nix). build/test/lint/fmt mirror the
 # CI gates in github-workflows/gates/go.yml.
-.PHONY: build test test-live acceptance-kill lint fmt vuln watch mocks
+.PHONY: build test test-live soak acceptance-kill lint fmt vuln watch mocks
 
 build: ## Build all packages
 	go build ./...
@@ -51,6 +51,13 @@ test-live: ## Run the //go:build live acceptance tests against the real API
 	@test -n "$$POLYMARKET_LIVE_TOKENS" || \
 		{ echo "set POLYMARKET_LIVE_TOKENS to a token file first" >&2; exit 1; }
 	gotestsum -- -tags live -count=1 -timeout 10m ./...
+
+# One live run, checked against what a healthy run looks like. Neither a CI gate
+# nor a test: it is anomaly detection against a measured baseline, meant to be
+# run repeatedly, by hand or on a timer, and to say nothing unless something
+# deviates. Fetches its own token ids unless POLYMARKET_LIVE_TOKENS names a file.
+soak: ## Run one live collection and check it against the healthy baseline
+	scripts/soak.sh
 
 # Kills the process with SIGKILL through a run and checks that the output path
 # is never observed truncated. SIGTERM is handled and would prove nothing; the
