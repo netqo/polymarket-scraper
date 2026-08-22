@@ -262,6 +262,10 @@ type Config struct {
 	MaxErrorLength int
 	// ConsoleValueLimit is how much of one attribute value reaches the terminal.
 	ConsoleValueLimit int
+
+	// LogCategories switches classes of log record on and off. Errors are
+	// never affected.
+	LogCategories LogCategories
 }
 
 // New returns a Config with every default applied and nothing else set.
@@ -298,6 +302,7 @@ func New() Config {
 
 		MaxErrorLength:    DefaultMaxErrorLength,
 		ConsoleValueLimit: DefaultConsoleValueLimit,
+		LogCategories:     AllLogCategories(),
 	}
 }
 
@@ -349,6 +354,7 @@ func (c Config) LogValue() slog.Value {
 		slog.Int("max_events", c.MaxEvents),
 		slog.Int("max_error_length", c.MaxErrorLength),
 		slog.Int("console_value_limit", c.ConsoleValueLimit),
+		slog.Any("log_categories_off", c.LogCategories.Disabled()),
 	)
 }
 

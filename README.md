@@ -102,6 +102,14 @@ The file is opened for appending at mode `0600`, so successive runs accumulate
 in it and the run identifier is what tells them apart. It is the place to look
 for anything the output document had to shorten.
 
+Records are grouped into categories that can be switched off independently in
+the settings file, under `[logging.categories]`: `startup`, `progress`,
+`connection`, `flags`, `rest`, `decode` and `discovery`. Level is the wrong axis
+for that choice, because wanting every per-token flag and none of the keepalive
+chatter is a question about subject matter, and both of those records sit at the
+same level. **Errors are never affected by these switches**, so a run that has
+been quietened still says when it breaks.
+
 ## Quality
 
 ```bash

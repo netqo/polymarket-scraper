@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/netqo/polymarket-scraper/internal/logging"
 	"github.com/netqo/polymarket-scraper/internal/tracker"
 	"github.com/netqo/polymarket-scraper/internal/wire"
 	"github.com/netqo/polymarket-scraper/internal/wsclient"
@@ -129,7 +130,7 @@ func (e *Engine) handleDecodeFailure(s *shardState, frame wsclient.Frame) {
 	// document keeps a sentence; this keeps whatever the frame actually said,
 	// which is the only evidence of what the exchange sent.
 	e.logger.Warn("a frame could not be decoded, so every token on it was re-seeded",
-		"shard", s.id, "error", frame.Err)
+		logging.Cat(logging.CategoryDecode), "shard", s.id, "error", frame.Err)
 
 	for _, t := range s.trackers {
 		e.act(s, t, t.NoteDecodeError())

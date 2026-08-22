@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/netqo/polymarket-scraper/internal/config"
+	"github.com/netqo/polymarket-scraper/internal/logging"
 	"github.com/netqo/polymarket-scraper/internal/report"
 	"github.com/netqo/polymarket-scraper/internal/restclient"
 	"github.com/netqo/polymarket-scraper/internal/tokenlist"
@@ -193,12 +194,14 @@ func (e *Engine) logFlag(tokenID string, flag tracker.Flag) {
 	}
 
 	ctx := context.Background()
+	category := logging.Cat(logging.CategoryFlags)
+
 	if e.logger.Enabled(ctx, slog.LevelDebug) {
-		e.logger.Log(ctx, level, "token flagged", "flag", string(flag), "token", tokenID)
+		e.logger.Log(ctx, level, "token flagged", category, "flag", string(flag), "token", tokenID)
 		return
 	}
 
-	e.logger.Log(ctx, level, "token flagged", "flag", string(flag))
+	e.logger.Log(ctx, level, "token flagged", category, "flag", string(flag))
 }
 
 // newTrackers builds one tracker per requested token, for the rest-only path

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/netqo/polymarket-scraper/internal/logging"
 	"github.com/netqo/polymarket-scraper/internal/report"
 	"github.com/netqo/polymarket-scraper/internal/restclient"
 	"github.com/netqo/polymarket-scraper/internal/tracker"
@@ -36,7 +37,7 @@ func (e *Engine) runRESTOnly(ctx context.Context) (report.Document, error) {
 	e.noteTokenListAnomalies()
 	trackers := e.newTrackers()
 
-	e.logger.Info("collecting over REST only",
+	e.logger.Info("collecting over REST only", logging.Cat(logging.CategoryProgress),
 		"tokens", len(e.tokens.IDs),
 		"batch_size", e.cfg.RESTBatchSize,
 		"rate", e.cfg.RESTRate)
@@ -60,7 +61,8 @@ func (e *Engine) fetchInBatches(ctx context.Context, trackers map[string]*tracke
 			// A failed batch is not fatal to the tokens in it: the individual
 			// pass below still gets a chance at each of them.
 			e.errors.Addf("a batch of %d books failed: %v", len(batch), err)
-			e.logger.Warn("batch fetch failed", "tokens", len(batch), "error", err)
+			e.logger.Warn("batch fetch failed", logging.Cat(logging.CategoryREST),
+				"tokens", len(batch), "error", err)
 			continue
 		}
 

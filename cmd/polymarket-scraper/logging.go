@@ -85,8 +85,13 @@ func newProcessLogger(stderr io.Writer, cfg config.Config) (*processLogger, erro
 	// counted once and both destinations agree about how many there were.
 	coalescer := logging.NewCoalescer(logging.NewTee(console, fileHandler))
 
+	// Filtering goes in front of all of it, so a switched-off record costs
+	// nothing: it is not rendered, not counted as a repeat, and not written to
+	// either destination.
+	filtered := logging.NewFilter(coalescer, disabledCategories(cfg))
+
 	return &processLogger{
-		logger:    slog.New(coalescer).With(runKey, newRunID()),
+		logger:    slog.New(filtered).With(runKey, newRunID()),
 		coalescer: coalescer,
 		file:      file,
 	}, nil
@@ -117,6 +122,21 @@ func newRunID() string {
 	}
 
 	return hex.EncodeToString(raw[:])
+}
+
+// disabledCategories translates the configured switches into the set the
+// logging package understands.
+//
+// The translation lives here rather than in either package, so that neither has
+// to know about the other: config describes what was asked for, logging decides
+// what to do with a record, and the command is what puts them together.
+func disabledCategories(cfg config.Config) map[logging.Category]bool {
+	off := make(map[logging.Category]bool)
+	for _, name := range cfg.LogCategories.Disabled() {
+		off[logging.Category(name)] = true
+	}
+
+	return off
 }
 
 // openLogFile opens the run's log for appending.
