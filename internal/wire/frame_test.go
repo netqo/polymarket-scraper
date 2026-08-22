@@ -1,3 +1,8 @@
+// Test data: the payloads below are captured from the live market channel and
+// kept verbatim, field order included. The discriminator is not the first field
+// in real messages, so a tidied-up fixture would pass a decoder that assumed it
+// was. PROTOCOL.md explains what each one is.
+
 package wire
 
 import (

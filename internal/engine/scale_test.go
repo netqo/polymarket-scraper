@@ -1,3 +1,8 @@
+// Test data: Invented tokens, at the size the consuming agent actually uses. The ids are long
+// decimal strings like the real ones on purpose: the subscribe frame's limit is on
+// bytes rather than on the number of assets, so short ids would make a shard look
+// narrower than it is.
+
 package engine
 
 import (

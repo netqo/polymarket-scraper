@@ -1,3 +1,6 @@
+// Test data: Invented books. What is under test is when a change is worth reporting, which is
+// this program's judgement rather than the exchange's.
+
 package tracker
 
 import (

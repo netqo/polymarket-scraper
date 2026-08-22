@@ -1,3 +1,5 @@
+// Test data: Invented data. Splitting a slice is arithmetic.
+
 package engine
 
 import "testing"

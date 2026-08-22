@@ -1,3 +1,5 @@
+// Test data: Invented data. The summary line is this program's own format.
+
 package report
 
 import (

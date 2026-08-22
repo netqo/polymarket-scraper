@@ -1,3 +1,5 @@
+// Test data: Invented data. Log categories are this program's own vocabulary.
+
 package config
 
 import (

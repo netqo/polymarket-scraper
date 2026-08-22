@@ -1,3 +1,5 @@
+// Test data: No data at all. This checks STREAM.md against the record type in both directions.
+
 package stream
 
 import (

@@ -1,3 +1,7 @@
+// Test data: Invented data, and deliberately pointed at an unreachable endpoint. What is
+// under test is that a run whose every token fails still writes a valid document
+// and still exits 0, which is easiest to arrange by guaranteeing the failure.
+
 package main
 
 import (

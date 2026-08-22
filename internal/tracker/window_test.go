@@ -1,3 +1,7 @@
+// Test data: Invented books at chosen times. The statistics are integer arithmetic over a
+// timeline the test controls, so a real feed would only make the expected values
+// harder to state.
+
 package tracker
 
 import (

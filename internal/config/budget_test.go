@@ -1,3 +1,6 @@
+// Test data: Invented data. The timeline is arithmetic over the configured durations, checked
+// with no clock, no sleeps and no goroutines.
+
 package config
 
 import (

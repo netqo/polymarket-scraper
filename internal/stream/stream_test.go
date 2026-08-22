@@ -1,3 +1,5 @@
+// Test data: Invented records, with prices chosen so a float64 round trip would be visible.
+
 package stream
 
 import (

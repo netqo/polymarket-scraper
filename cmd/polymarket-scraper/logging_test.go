@@ -1,3 +1,7 @@
+// Test data: Invented data. What is under test is how this program wires its logger and its
+// log file together, which is a property of the program rather than of the
+// exchange.
+
 package main
 
 import (

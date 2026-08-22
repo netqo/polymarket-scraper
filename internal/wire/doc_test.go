@@ -1,3 +1,5 @@
+// Test data: No data at all. This checks PROTOCOL.md against this package in both directions.
+
 package wire
 
 import (

@@ -1,3 +1,6 @@
+// Test data: No data at all. This walks the document type and checks the rules its shape has
+// to obey.
+
 package report
 
 import (

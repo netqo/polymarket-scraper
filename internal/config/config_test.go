@@ -1,3 +1,7 @@
+// Test data: Invented data, except where a limit encodes something observed: the shard width
+// ceiling exists because the server silently stops sending snapshots past roughly
+// 750 assets. See PROTOCOL.md.
+
 package config
 
 import (

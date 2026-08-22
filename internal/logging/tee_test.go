@@ -1,3 +1,5 @@
+// Test data: Invented records. Fan-out is entirely this program's concern.
+
 package logging
 
 import (

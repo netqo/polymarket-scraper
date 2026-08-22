@@ -1,3 +1,7 @@
+// Test data: Invented books. This is the promise the whole project exists to keep, stated as
+// a property: there is no sequence of events after which a book that is not current
+// appears in the output. Proving that needs failures arranged on demand.
+
 package tracker
 
 import (

@@ -1,3 +1,7 @@
+// Test data: Invented values, chosen to break naive implementations: trailing zeros, values a
+// float64 cannot hold exactly, and text that is not a number at all. The shapes
+// come from what the feed emits; the specific numbers do not need to.
+
 package decimal
 
 import (
