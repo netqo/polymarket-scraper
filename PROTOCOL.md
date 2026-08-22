@@ -87,6 +87,25 @@ Because these are raw text, they have to be recognised *before* anything tries t
 parse a frame as JSON. Otherwise every keepalive surfaces as a decode error and
 takes its tokens out of trust.
 
+### What the keepalive is actually for
+
+Measured 2026-08-22, because the answer is the opposite of the obvious one:
+
+- **The server does not require it.** A connection that sent nothing at all after
+  subscribing was kept open and fed for a full three minutes.
+- **The server never speaks first.** No keepalive of its own arrived in that
+  time, so silence from the server is not evidence of anything.
+- **The server does answer `PING` with `PONG`.** Six replies to seven pings.
+
+So the ping is sent for the client's benefit. On a market with no activity of its
+own, the pong is the only thing that breaks the silence, and without it a
+perfectly healthy quiet connection would trip a client-side idle timeout and have
+every token on it distrusted and re-seeded for nothing.
+
+The consequence for anyone reimplementing this: the idle timeout has to stay
+comfortably above the ping interval, and dropping the ping "because the server
+does not need it" would break quiet markets specifically.
+
 ### Frame shapes
 
 > **Contradicts the documentation, and fails silently.**
@@ -184,6 +203,10 @@ on the fee rate a consumer verifies through other means.
 ```
 
 **Not guaranteed to be delivered**, so it must never be the source of a book.
+One 45s window produced 561 price changes and not a single one of these; a
+separate 3-minute run produced enough to disagree with the maintained book on 4
+tokens out of 40. It is intermittent, and it is sometimes wrong, which is exactly
+why it is a cross-check and not a source.
 The scraper computes its own top of book from snapshots and deltas and uses this
 only as an independent cross-check; a disagreement means the locally maintained
 book has diverged, almost always because a delta was missed or misapplied.

@@ -74,6 +74,11 @@ url = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
 max_assets_per_connection = 400
 
 # Keepalive cadence. The frame is the literal text PING, not a protocol ping.
+#
+# Sent for this client's benefit rather than the server's: the server tolerates a
+# client that never speaks and never speaks first itself, but it does answer
+# PING. On a market with no activity the reply is the only thing that stops the
+# idle timeout below from firing on a healthy connection.
 ping_interval = "10s"
 
 # Silence tolerated before a connection is treated as dead. Must exceed
@@ -86,7 +91,7 @@ idle_timeout = "30s"
 # The feed carries no sequence numbers, only timestamps, so treating every
 # regression as a missed update would turn one server clock quirk into a resync
 # of every token at once.
-reorder_tolerance = "5s"
+reorder_tolerance = "1s"
 
 # Treat a published best quote that disagrees with the maintained book as a gap
 # rather than an anomaly. Off by default: the published quote is not guaranteed

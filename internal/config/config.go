@@ -151,19 +151,44 @@ const (
 	// discovering in production.
 	MaxAssetsCeiling = 700
 
-	// DefaultPingInterval matches the documented keepalive cadence. The frame
-	// is the literal text "PING", not a websocket protocol ping.
+	// DefaultPingInterval is how often the keepalive is sent. The frame is the
+	// literal text "PING", not a websocket protocol ping.
+	//
+	// Measured: the server does not require it. A connection that sent nothing
+	// at all for three minutes was kept open and fed the whole time. What the
+	// ping is actually for is the other direction. The server never speaks
+	// unprompted -- no keepalives of its own were seen in three minutes -- but
+	// it does answer PING with PONG. So on a market with no activity, the reply
+	// to our own ping is the only thing that breaks the silence, and without it
+	// a perfectly healthy quiet connection would trip the idle timeout below
+	// and have every token on it distrusted.
 	DefaultPingInterval = 10 * time.Second
 
 	// DefaultIdleTimeout is how long a connection may deliver nothing at all
-	// before it is treated as dead (requirement B2).
+	// before it is treated as dead (requirement B2). It must stay comfortably
+	// above the ping interval, because on a quiet market the pong is the only
+	// thing keeping it fed.
 	DefaultIdleTimeout = 30 * time.Second
 
 	// DefaultReorderTolerance is how far a timestamp may go backwards before
-	// the token is distrusted rather than merely flagged. See the D4 deviation
-	// in the README: the feed carries no sequence numbers, so treating every
-	// regression as a gap would turn one clock quirk into a resync storm.
-	DefaultReorderTolerance = 5 * time.Second
+	// the token is distrusted rather than merely flagged. The feed carries no
+	// sequence numbers, so treating every regression as a gap would turn one
+	// clock quirk into a resync storm.
+	//
+	// Measured rather than guessed, which it had not been until now. Over 1119
+	// price changes across 40 tokens in 90 seconds the feed produced *no*
+	// timestamp regressions at all, and the worst exchange-to-arrival lag was
+	// 896ms with a median of 111ms.
+	//
+	// So this was lowered from 5s. The two ways of being wrong are not
+	// symmetric: too tight forgives nothing and costs a re-seed, which is a
+	// couple of batched REST requests and leaves the book correct; too loose
+	// accepts a genuine gap as a clock artifact and reports a book that has
+	// silently diverged, which is the one outcome this project exists to
+	// prevent. When the evidence says regressions do not happen in normal
+	// operation, the tolerance should sit just above ordinary jitter rather
+	// than five seconds above it.
+	DefaultReorderTolerance = time.Second
 
 	// DefaultDiscoverLimit caps how many tokens a run will subscribe to
 	// mid-window after seeing them announced. The announcement feed is global

@@ -85,6 +85,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not grow with the number of updates received.
 
 ### Changed
+- The default reorder tolerance drops from 5s to 1s. It had never been measured
+  against the feed; over 1119 price changes in 90 seconds there were no timestamp
+  regressions at all, and the worst exchange-to-arrival lag was 896ms. The two
+  ways of being wrong are not symmetric: too tight costs a re-seed and leaves the
+  book correct, while too loose accepts a genuine gap as a clock artifact and
+  reports a book that has silently diverged.
 - Reconnection backoff drops from 1s/8s to 250ms/4s. A dropped connection stops
   delta delivery for every token it carried, and against a 90 second window the
   old ceiling spent nearly a tenth of the run blind. Both remain settings.
