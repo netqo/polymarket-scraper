@@ -232,7 +232,7 @@ func TestAReconnectResubscribesTheAnnouncedTokens(t *testing.T) {
 	cfg := websocketConfig(ws.URL(), rest.URL())
 	// Long enough to outlast the reconnection backoff, which is what this test
 	// is here to see the other side of.
-	cfg.Duration = reconnectInitialBackoff + 500*time.Millisecond
+	cfg.Duration = cfg.ReconnectInitialBackoff + 500*time.Millisecond
 
 	collector, err := New(Options{Config: cfg, Tokens: tokenlist.List{IDs: []string{"111"}}})
 	if err != nil {

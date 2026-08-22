@@ -10,14 +10,6 @@ import (
 	"github.com/netqo/polymarket-scraper/internal/wsclient"
 )
 
-// Reconnection backoff. There is no jitter: one process, and its requests are
-// already paced, so jitter would only add randomness to a program that
-// otherwise has none.
-const (
-	reconnectInitialBackoff = time.Second
-	reconnectMaxBackoff     = 8 * time.Second
-)
-
 // runWebsocket collects a window over the websocket.
 //
 // The whole shape of this function follows from one fact: a goroutine blocked
@@ -45,7 +37,7 @@ func (e *Engine) runWebsocket(ctx context.Context) (report.Document, error) {
 
 	results := make(chan shardResult, len(e.shards))
 
-	for range resyncWorkers {
+	for range e.cfg.ResyncWorkers {
 		go e.resyncWorker(drainCtx)
 	}
 	go e.seedMetadata(drainCtx)
@@ -129,7 +121,7 @@ func (e *Engine) recordUnreportedShards(reported map[int]bool, snapshots map[str
 // stopped being trustworthy. Every reconnection sends that notice first, and
 // only then dials again.
 func (e *Engine) runShard(collectCtx context.Context, s *shardState) {
-	backoff := reconnectInitialBackoff
+	backoff := e.cfg.ReconnectInitialBackoff
 	everConnected := false
 
 	for collectCtx.Err() == nil {
@@ -144,6 +136,7 @@ func (e *Engine) runShard(collectCtx context.Context, s *shardState) {
 			AssetIDs:     subscribed,
 			PingInterval: e.cfg.PingInterval,
 			IdleTimeout:  e.cfg.IdleTimeout,
+			ReadLimit:    e.cfg.ReadLimit,
 			Logger:       e.logger,
 			HTTPClient:   e.httpClient,
 		})
@@ -170,7 +163,7 @@ func (e *Engine) runShard(collectCtx context.Context, s *shardState) {
 		if !sleepCtx(collectCtx, backoff) {
 			return
 		}
-		backoff = min(backoff*2, reconnectMaxBackoff)
+		backoff = min(backoff*2, e.cfg.ReconnectMaxBackoff)
 	}
 
 	if !everConnected {

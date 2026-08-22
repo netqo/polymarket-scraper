@@ -89,6 +89,13 @@ type Options struct {
 
 	Logger *slog.Logger
 
+	// ReadLimit bounds a single frame, in bytes. Zero uses fallbackReadLimit.
+	//
+	// It matters more than a buffer size usually does: the initial snapshot for
+	// a full shard arrives as one frame and grows with the number of assets, so
+	// a limit set too low drops exactly the message the whole run depends on.
+	ReadLimit int64
+
 	// HTTPClient replaces the dialer's transport. Tests point it at an
 	// in-process server; production leaves it nil.
 	HTTPClient *http.Client
@@ -196,16 +203,26 @@ func (s *Shard) dial(ctx context.Context) (*websocket.Conn, error) {
 
 	// Book snapshots for several hundred assets arrive in a single frame, which
 	// is far larger than the library's default limit.
-	conn.SetReadLimit(readLimit)
+	conn.SetReadLimit(s.readLimit())
 
 	s.logger.Info("connected", "assets", len(s.opts.AssetIDs))
 
 	return conn, nil
 }
 
-// readLimit bounds a single frame. The initial snapshot for a full shard is the
-// largest thing the server sends, and it grows with the number of assets.
-const readLimit = 32 << 20
+// fallbackReadLimit is used when a caller leaves ReadLimit at zero. The real
+// default lives in the config package, which is the one place it can be changed
+// without rebuilding.
+const fallbackReadLimit = 32 << 20
+
+// readLimit is how large a single frame may be.
+func (s *Shard) readLimit() int64 {
+	if s.opts.ReadLimit > 0 {
+		return s.opts.ReadLimit
+	}
+
+	return fallbackReadLimit
+}
 
 // subscribe sends the opening subscription.
 func (s *Shard) subscribe(ctx context.Context, conn *websocket.Conn) error {

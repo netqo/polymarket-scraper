@@ -110,14 +110,14 @@ func New(opts Options) (*Engine, error) {
 		httpClient: opts.HTTPClient,
 		halt:       halt,
 		rest:       rest,
-		errors:     &errorSink{},
-		events:     newEventLog(),
+		errors:     newErrorSink(opts.Config),
+		events:     newEventLog(opts.Config.MaxEvents),
 		// Sized so every tracker that can exist can have a re-seed outstanding
 		// at once, which is exactly what a disconnect produces. Discovered
 		// tokens are counted too: they use this queue as well, and a queue that
 		// only fits the requested ones lets a token the run picked up on its own
 		// push a token that was actually asked for onto the failure path.
-		resync:    make(chan resyncRequest, len(opts.Tokens.IDs)+opts.Config.DiscoverLimit+resyncWorkers),
+		resync:    make(chan resyncRequest, len(opts.Tokens.IDs)+opts.Config.DiscoverLimit+opts.Config.ResyncWorkers),
 		requested: requestedSet(opts.Tokens.IDs),
 	}, nil
 }
@@ -231,7 +231,7 @@ func (e *Engine) finalizeDocument(startedAt, finishedAt time.Time, snapshots map
 	// one, which is the sort of quiet inaccuracy this document exists to avoid.
 	if dropped := e.events.suppressedCount(); dropped > 0 {
 		e.errors.Addf("%d announcements were not reported: the run hit the cap of %d per list",
-			dropped, maxEvents)
+			dropped, e.cfg.MaxEvents)
 	}
 
 	requested, discovered := e.splitDiscovered(snapshots)

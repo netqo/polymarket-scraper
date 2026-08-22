@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/netqo/polymarket-scraper/internal/config"
 	"github.com/netqo/polymarket-scraper/internal/testsupport"
 	"github.com/netqo/polymarket-scraper/internal/tracker"
 	"github.com/netqo/polymarket-scraper/internal/wire"
@@ -91,7 +92,7 @@ func TestResolutionAnnouncementsAreReportedAndFlagTheirTokens(t *testing.T) {
 // with four shards must not report each new market four times, or a consumer
 // counting fresh markets is wrong by a factor of four.
 func TestAnnouncementsAreDeduplicatedAcrossShards(t *testing.T) {
-	log := newEventLog()
+	log := newEventLog(config.DefaultMaxEvents)
 	at := time.Now()
 
 	event := wire.NewMarket{
@@ -110,7 +111,7 @@ func TestAnnouncementsAreDeduplicatedAcrossShards(t *testing.T) {
 }
 
 func TestResolutionsAreDeduplicated(t *testing.T) {
-	log := newEventLog()
+	log := newEventLog(config.DefaultMaxEvents)
 	at := time.Now()
 
 	event := wire.MarketResolved{ID: "1031769", Market: "0xmarket", WinningOutcome: "Yes"}
@@ -126,7 +127,7 @@ func TestResolutionsAreDeduplicated(t *testing.T) {
 // An announcement missing one identifier is still deduplicated on another,
 // rather than being counted twice because one field happened to be absent.
 func TestDeduplicationFallsBackThroughIdentifiers(t *testing.T) {
-	log := newEventLog()
+	log := newEventLog(config.DefaultMaxEvents)
 	at := time.Now()
 
 	withoutID := wire.NewMarket{ConditionID: "0xcond", Question: "no id"}
@@ -141,15 +142,15 @@ func TestDeduplicationFallsBackThroughIdentifiers(t *testing.T) {
 // The feed's volume has nothing to do with how many tokens were asked for, so
 // a long window could accumulate announcements without bound.
 func TestAnnouncementsAreCapped(t *testing.T) {
-	log := newEventLog()
+	log := newEventLog(config.DefaultMaxEvents)
 	at := time.Now()
 
-	for i := range maxEvents + 25 {
+	for i := range config.DefaultMaxEvents + 25 {
 		log.noteNewMarket(wire.NewMarket{ID: strconv.Itoa(i)}, at)
 	}
 
-	if got := len(log.events().NewMarkets); got != maxEvents {
-		t.Errorf("got %d announcements, want the cap of %d", got, maxEvents)
+	if got := len(log.events().NewMarkets); got != config.DefaultMaxEvents {
+		t.Errorf("got %d announcements, want the cap of %d", got, config.DefaultMaxEvents)
 	}
 	if got := log.suppressedCount(); got != 25 {
 		t.Errorf("suppressedCount() = %d, want 25", got)
@@ -171,7 +172,7 @@ func TestHittingTheCapIsRecordedInTheDocument(t *testing.T) {
 	}
 
 	at := time.Now()
-	for i := range maxEvents + 3 {
+	for i := range config.DefaultMaxEvents + 3 {
 		collector.events.noteNewMarket(wire.NewMarket{ID: strconv.Itoa(i)}, at)
 	}
 

@@ -18,7 +18,12 @@ import (
 func fastClient(t *testing.T, fake *testsupport.FakeREST) *Client {
 	t.Helper()
 
-	client, err := New(Options{BaseURL: fake.URL(), Rate: 10_000, Attempts: DefaultAttempts})
+	client, err := New(Options{
+		BaseURL:       fake.URL(),
+		Rate:          10_000,
+		Attempts:      3,
+		MaxRetryAfter: 10 * time.Second,
+	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -271,28 +276,77 @@ func TestRequestsCounterIncludesRetries(t *testing.T) {
 	}
 }
 
+// tunedClient builds a client with the retry policy spelled out, so the tests
+// below assert against known numbers rather than whatever the defaults are.
+func tunedClient(t *testing.T, initial, maximum, retryAfter time.Duration) *Client {
+	t.Helper()
+
+	client, err := New(Options{
+		BaseURL:        "https://example.test",
+		Rate:           10,
+		InitialBackoff: initial,
+		MaxBackoff:     maximum,
+		MaxRetryAfter:  retryAfter,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+
+	return client
+}
+
 func TestBackoffGrowsAndIsCapped(t *testing.T) {
+	const (
+		initial = 250 * time.Millisecond
+		maximum = 4 * time.Second
+	)
+	client := tunedClient(t, initial, maximum, 0)
+
 	tests := []struct {
 		attempt int
 		want    time.Duration
 	}{
-		{2, initialBackoff},
-		{3, 2 * initialBackoff},
-		{4, 4 * initialBackoff},
-		{9, maxBackoff},
+		{2, initial},
+		{3, 2 * initial},
+		{4, 4 * initial},
+		{9, maximum},
 	}
 
 	for _, tt := range tests {
-		if got := backoffFor(tt.attempt, nil); got != tt.want {
+		if got := client.backoffFor(tt.attempt, nil); got != tt.want {
 			t.Errorf("backoffFor(%d) = %v, want %v", tt.attempt, got, tt.want)
 		}
 	}
 }
 
+// The policy is configuration now, so a client told to wait differently has to
+// actually wait differently.
+func TestBackoffFollowsTheConfiguredBounds(t *testing.T) {
+	client := tunedClient(t, time.Second, 2*time.Second, 0)
+
+	if got := client.backoffFor(2, nil); got != time.Second {
+		t.Errorf("first backoff = %v, want the configured 1s", got)
+	}
+	if got := client.backoffFor(9, nil); got != 2*time.Second {
+		t.Errorf("capped backoff = %v, want the configured 2s ceiling", got)
+	}
+}
+
+// A ceiling below the floor would shorten the first wait rather than lengthen
+// the later ones, which is the opposite of a backoff.
+func TestBackoffCeilingIsRaisedToTheFloor(t *testing.T) {
+	client := tunedClient(t, 2*time.Second, time.Second, 0)
+
+	if got := client.backoffFor(2, nil); got != 2*time.Second {
+		t.Errorf("first backoff = %v, want the floor honoured despite a lower ceiling", got)
+	}
+}
+
 func TestBackoffPrefersTheServersOwnInstruction(t *testing.T) {
+	client := tunedClient(t, 250*time.Millisecond, 4*time.Second, 10*time.Second)
 	err := &statusError{Code: http.StatusTooManyRequests, RetryAfter: 3 * time.Second}
 
-	if got := backoffFor(2, err); got != 3*time.Second {
+	if got := client.backoffFor(2, err); got != 3*time.Second {
 		t.Errorf("backoffFor with Retry-After = %v, want 3s", got)
 	}
 }
@@ -300,22 +354,40 @@ func TestBackoffPrefersTheServersOwnInstruction(t *testing.T) {
 // A cooperative client waits, but not past the point where waiting costs more
 // than the data is worth: the run has a deadline of its own.
 func TestRetryAfterIsCapped(t *testing.T) {
+	const cap = 10 * time.Second
+	client := tunedClient(t, 250*time.Millisecond, 4*time.Second, cap)
+
 	response := &http.Response{Header: http.Header{}}
 	response.Header.Set("Retry-After", "3600")
 
-	if got := retryAfter(response); got != maxRetryAfter {
-		t.Errorf("retryAfter = %v, want it capped at %v", got, maxRetryAfter)
+	if got := client.retryAfter(response); got != cap {
+		t.Errorf("retryAfter = %v, want it capped at %v", got, cap)
+	}
+}
+
+// Zero is a way of saying the header should not be obeyed at all, which is what
+// a run with a very short deadline wants.
+func TestRetryAfterCanBeDisabled(t *testing.T) {
+	client := tunedClient(t, 250*time.Millisecond, 4*time.Second, 0)
+
+	response := &http.Response{Header: http.Header{}}
+	response.Header.Set("Retry-After", "5")
+
+	if got := client.retryAfter(response); got != 0 {
+		t.Errorf("retryAfter = %v, want 0 when the cap is 0", got)
 	}
 }
 
 func TestRetryAfterIgnoresWhatItCannotRead(t *testing.T) {
+	client := tunedClient(t, 250*time.Millisecond, 4*time.Second, 10*time.Second)
+
 	tests := []string{"", "Wed, 21 Oct 2026 07:28:00 GMT", "-1", "0", "soon"}
 
 	for _, value := range tests {
 		response := &http.Response{Header: http.Header{}}
 		response.Header.Set("Retry-After", value)
 
-		if got := retryAfter(response); got != 0 {
+		if got := client.retryAfter(response); got != 0 {
 			t.Errorf("retryAfter(%q) = %v, want 0", value, got)
 		}
 	}

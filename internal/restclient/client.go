@@ -36,29 +36,24 @@ const (
 	booksPath = "/books"
 )
 
-// Retry policy.
+// maxBackoffSteps is how far the exponential shift is allowed to run.
+//
+// Four doublings already exceed any sensible ceiling, so nothing is lost by
+// stopping there, and the shift cannot overflow however many attempts are
+// configured. It is not a setting: it is a property of the arithmetic rather
+// than a choice about behaviour.
+const maxBackoffSteps = 4
+
+// Fallbacks used when a caller leaves an option at zero.
+//
+// These are a guard against an unusable client, not a statement of policy. The
+// defaults a run actually uses live in the config package, which is the one
+// place they can be changed without rebuilding.
 const (
-	// DefaultAttempts is how many times a request is tried before giving up.
-	// Three is enough to ride out a transient failure and few enough that a
-	// failing token cannot eat the run's deadline.
-	DefaultAttempts = 3
-
-	// DefaultTimeout bounds a single request, so a connection that accepts and
-	// then says nothing cannot stall the run on its own.
-	DefaultTimeout = 10 * time.Second
-
-	initialBackoff = 250 * time.Millisecond
-	maxBackoff     = 4 * time.Second
-
-	// maxBackoffSteps is how far the exponential shift is allowed to run.
-	// Four doublings already exceed maxBackoff, so nothing is lost by stopping
-	// there, and the shift cannot overflow however many attempts are configured.
-	maxBackoffSteps = 4
-
-	// maxRetryAfter caps how long a server-supplied Retry-After is honoured.
-	// A cooperative client should wait, but not past the point where waiting
-	// costs more than the data is worth.
-	maxRetryAfter = 10 * time.Second
+	fallbackAttempts       = 3
+	fallbackTimeout        = 10 * time.Second
+	fallbackInitialBackoff = 250 * time.Millisecond
+	fallbackMaxBackoff     = 4 * time.Second
 )
 
 // ErrNotFound reports that the exchange does not recognise a token id.
@@ -77,13 +72,20 @@ type Options struct {
 	// does, retries included.
 	Rate float64
 
-	// Timeout bounds one attempt, whether or not HTTPClient is supplied. Zero
-	// means DefaultTimeout.
+	// Timeout bounds one attempt, whether or not HTTPClient is supplied.
 	Timeout time.Duration
 
-	// Attempts is how many times a request is tried. Zero means
-	// DefaultAttempts.
+	// Attempts is how many times a request is tried.
 	Attempts int
+
+	// InitialBackoff and MaxBackoff bound the wait between attempts.
+	InitialBackoff time.Duration
+	MaxBackoff     time.Duration
+
+	// MaxRetryAfter caps how long a server-supplied Retry-After is honoured. A
+	// cooperative client should wait, but not past the point where waiting
+	// costs more than the data is worth. Zero disables the header entirely.
+	MaxRetryAfter time.Duration
 
 	// HTTPClient replaces the default transport. Tests use it to reach an
 	// in-process server; production leaves it nil.
@@ -97,6 +99,10 @@ type Client struct {
 	limiter  *rate.Limiter
 	attempts int
 	timeout  time.Duration
+
+	initialBackoff time.Duration
+	maxBackoff     time.Duration
+	maxRetryAfter  time.Duration
 
 	requests atomic.Int64
 }
@@ -115,13 +121,19 @@ func New(opts Options) (*Client, error) {
 		return nil, fmt.Errorf("the REST rate must be positive, got %v", opts.Rate)
 	}
 
-	timeout := opts.Timeout
-	if timeout <= 0 {
-		timeout = DefaultTimeout
-	}
+	timeout := orFallback(opts.Timeout, fallbackTimeout)
+	initialBackoff := orFallback(opts.InitialBackoff, fallbackInitialBackoff)
+	maxBackoff := orFallback(opts.MaxBackoff, fallbackMaxBackoff)
+
 	attempts := opts.Attempts
 	if attempts <= 0 {
-		attempts = DefaultAttempts
+		attempts = fallbackAttempts
+	}
+
+	// A ceiling below the floor would silently shorten the first wait rather
+	// than lengthening the later ones, which is the opposite of a backoff.
+	if maxBackoff < initialBackoff {
+		maxBackoff = initialBackoff
 	}
 
 	// The timeout is enforced per attempt below rather than only here, because a
@@ -142,7 +154,20 @@ func New(opts Options) (*Client, error) {
 		limiter:  rate.NewLimiter(rate.Limit(opts.Rate), 1),
 		attempts: attempts,
 		timeout:  timeout,
+
+		initialBackoff: initialBackoff,
+		maxBackoff:     maxBackoff,
+		maxRetryAfter:  opts.MaxRetryAfter,
 	}, nil
+}
+
+// orFallback returns value when it is usable, and the fallback otherwise.
+func orFallback(value, fallback time.Duration) time.Duration {
+	if value <= 0 {
+		return fallback
+	}
+
+	return value
 }
 
 // Requests reports how many HTTP requests have been made, retries included.
@@ -193,7 +218,7 @@ func (c *Client) do(ctx context.Context, method, endpoint string, body []byte, o
 
 	for attempt := 1; attempt <= c.attempts; attempt++ {
 		if attempt > 1 {
-			if err := sleep(ctx, backoffFor(attempt, lastErr)); err != nil {
+			if err := sleep(ctx, c.backoffFor(attempt, lastErr)); err != nil {
 				return errors.Join(lastErr, err)
 			}
 		}
@@ -255,7 +280,7 @@ func (c *Client) attempt(ctx context.Context, method, endpoint string, body []by
 		_ = response.Body.Close()
 	}()
 
-	if err := checkStatus(response); err != nil {
+	if err := c.checkStatus(response); err != nil {
 		return err
 	}
 
@@ -268,14 +293,14 @@ func (c *Client) attempt(ctx context.Context, method, endpoint string, body []by
 
 // checkStatus turns an HTTP status into an error, distinguishing the one status
 // that is a fact rather than a setback.
-func checkStatus(response *http.Response) error {
+func (c *Client) checkStatus(response *http.Response) error {
 	switch {
 	case response.StatusCode == http.StatusNotFound:
 		return ErrNotFound
 	case response.StatusCode >= http.StatusBadRequest:
 		return &statusError{
 			Code:       response.StatusCode,
-			RetryAfter: retryAfter(response),
+			RetryAfter: c.retryAfter(response),
 		}
 	default:
 		return nil
@@ -300,15 +325,19 @@ func (e *statusError) Error() string {
 // retryAfter reads the Retry-After header, in seconds, ignoring the HTTP-date
 // form: the exchange sends seconds, and a date form would need a trusted clock
 // to interpret.
-func retryAfter(response *http.Response) time.Duration {
+func (c *Client) retryAfter(response *http.Response) time.Duration {
+	if c.maxRetryAfter <= 0 {
+		return 0
+	}
+
 	seconds, err := strconv.Atoi(response.Header.Get("Retry-After"))
 	if err != nil || seconds <= 0 {
 		return 0
 	}
 
 	wait := time.Duration(seconds) * time.Second
-	if wait > maxRetryAfter {
-		return maxRetryAfter
+	if wait > c.maxRetryAfter {
+		return c.maxRetryAfter
 	}
 
 	return wait
@@ -321,7 +350,7 @@ func retryAfter(response *http.Response) time.Duration {
 // synchronising on the same retry schedule; there is one process here, and its
 // requests are already paced by a shared limiter, so jitter would add
 // randomness to a program that otherwise has none.
-func backoffFor(attempt int, lastErr error) time.Duration {
+func (c *Client) backoffFor(attempt int, lastErr error) time.Duration {
 	var status *statusError
 	if errors.As(lastErr, &status) && status.RetryAfter > 0 {
 		return status.RetryAfter
@@ -331,7 +360,7 @@ func backoffFor(attempt int, lastErr error) time.Duration {
 	// otherwise overflow it and turn the longest backoff into no backoff at all.
 	steps := min(attempt-2, maxBackoffSteps)
 
-	return min(initialBackoff<<steps, maxBackoff)
+	return min(c.initialBackoff<<steps, c.maxBackoff)
 }
 
 // sleep waits, or gives up early if the run is ending.

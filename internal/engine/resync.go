@@ -8,12 +8,12 @@ import (
 	"github.com/netqo/polymarket-scraper/internal/wire"
 )
 
-// resyncWorkers is how many re-seed workers run.
+// How many re-seed workers run is a setting rather than a constant: see
+// config.DefaultResyncWorkers and rest.resync_workers.
 //
-// They share one rate limiter, so this is not a throughput setting: it is how
+// They share one rate limiter, so it is not a throughput setting: it is how
 // many requests can be in flight while others wait on the limiter, which keeps
 // a slow response from idling the whole budget.
-const resyncWorkers = 4
 
 // resyncRequest asks for a token's book to be fetched.
 type resyncRequest struct {

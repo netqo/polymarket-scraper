@@ -264,7 +264,7 @@ func TestProcessLoggerAppendsToAnExistingFile(t *testing.T) {
 // something legible on a terminal.
 func TestProcessLoggerTruncatesForTheTerminalOnly(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "run.log")
-	frame := strings.Repeat("x", consoleValueLimit*4)
+	frame := strings.Repeat("x", config.DefaultConsoleValueLimit*4)
 
 	var buf bytes.Buffer
 	proc, err := newProcessLogger(&buf, loggerConfig(levelInfo, path))
