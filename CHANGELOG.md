@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Log records are grouped into categories that can be switched off
+  independently in the settings file, under `[logging.categories]`: `startup`,
+  `progress`, `connection`, `flags`, `rest`, `decode` and `discovery`. Level is
+  the wrong axis for the question, since wanting every per-token flag and none
+  of the keepalive chatter is about subject matter and both sit at the same
+  level. Errors are never suppressed by a category switch.
 - Settings can come from a TOML file, found via `--config`, `POLYMARKET_CONFIG`,
   or `polymarket-scraper.toml` in the working directory.
   `polymarket-scraper.example.toml` is a fully commented copy in which every

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/netqo/polymarket-scraper/internal/config"
+	"github.com/netqo/polymarket-scraper/internal/logging"
 )
 
 // loggerConfig is the minimum configuration newProcessLogger reads.
@@ -311,6 +312,51 @@ func TestProcessLoggerCloseFlushesTheRepeatCount(t *testing.T) {
 
 	if !strings.Contains(buf.String(), "connection ended (x9)") {
 		t.Errorf("stderr = %q, want the repeat count after Close", buf.String())
+	}
+}
+
+// The two packages know nothing about each other, so the translation between
+// them is the thing that can silently break: a category renamed on one side
+// would switch nothing off on the other, with no error anywhere.
+func TestProcessLoggerAppliesTheConfiguredCategories(t *testing.T) {
+	cfg := loggerConfig(levelDebug, "")
+	cfg.LogCategories.Flags = false
+
+	var buf bytes.Buffer
+	proc, err := newProcessLogger(&buf, cfg)
+	if err != nil {
+		t.Fatalf("newProcessLogger returned error: %v", err)
+	}
+	defer proc.Close()
+
+	proc.logger.Warn("token flagged", logging.Cat(logging.CategoryFlags), "flag", "delta_gap")
+	if buf.Len() != 0 {
+		t.Errorf("a switched-off category was written: %q", buf.String())
+	}
+
+	proc.logger.Info("connected", logging.Cat(logging.CategoryConnection))
+	if !strings.Contains(buf.String(), "connected") {
+		t.Errorf("output = %q, want the category that is still on", buf.String())
+	}
+}
+
+// Something has to reach a reader who has switched everything else off, or a
+// silent run and a broken one look alike.
+func TestProcessLoggerStillReportsErrorsWithEveryCategoryOff(t *testing.T) {
+	cfg := loggerConfig(levelDebug, "")
+	cfg.LogCategories = config.LogCategories{}
+
+	var buf bytes.Buffer
+	proc, err := newProcessLogger(&buf, cfg)
+	if err != nil {
+		t.Fatalf("newProcessLogger returned error: %v", err)
+	}
+	defer proc.Close()
+
+	proc.logger.Error("the run failed", logging.Cat(logging.CategoryConnection), "error", "everything")
+
+	if !strings.Contains(buf.String(), "the run failed") {
+		t.Errorf("output = %q, want the error despite every category being off", buf.String())
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/netqo/polymarket-scraper/internal/logging"
 	"github.com/netqo/polymarket-scraper/internal/report"
 	"github.com/netqo/polymarket-scraper/internal/tracker"
 	"github.com/netqo/polymarket-scraper/internal/wsclient"
@@ -50,7 +51,7 @@ func (e *Engine) runWebsocket(ctx context.Context) (report.Document, error) {
 	sweep := time.AfterFunc(budget.Sweep, func() { e.broadcastSweep(collectCtx) })
 	defer sweep.Stop()
 
-	e.logger.Info("collecting",
+	e.logger.Info("collecting", logging.Cat(logging.CategoryProgress),
 		"tokens", len(e.tokens.IDs),
 		"shards", len(e.shards),
 		"window", budget.Collect)
@@ -154,7 +155,8 @@ func (e *Engine) runShard(collectCtx context.Context, s *shardState) {
 
 		e.reconnects.Add(1)
 		e.errors.Addf("shard %d: connection ended (%v), reconnecting", s.id, err)
-		e.logger.Warn("connection ended", "shard", s.id, "error", err)
+		e.logger.Warn("connection ended", logging.Cat(logging.CategoryConnection),
+			"shard", s.id, "error", err)
 
 		// The notice goes out before the redial, so no token stays trusted
 		// across a gap even briefly.

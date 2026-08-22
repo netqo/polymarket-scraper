@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/netqo/polymarket-scraper/internal/config"
+	"github.com/netqo/polymarket-scraper/internal/logging"
 	"github.com/netqo/polymarket-scraper/internal/tracker"
 	"github.com/netqo/polymarket-scraper/internal/wire"
 )
@@ -55,7 +56,7 @@ func (e *Engine) admitAnnounced(s *shardState, event wire.NewMarket, at time.Tim
 		return
 	}
 
-	e.logger.Info("subscribed to announced tokens",
+	e.logger.Info("subscribed to announced tokens", logging.Cat(logging.CategoryDiscovery),
 		"shard", s.id, "tokens", len(added), "question", event.Question, "at", at)
 }
 

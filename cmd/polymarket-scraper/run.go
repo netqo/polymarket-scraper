@@ -71,7 +71,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	// Recorded before anything can fail, so that even a run that dies loading
 	// its token list leaves behind what it was asked to do.
-	logging.Step(logger, "starting", "version", buildVersion(), "config", cfg)
+	logging.Step(logger, "starting", logging.Cat(logging.CategoryStartup),
+		"version", buildVersion(), "config", cfg)
 
 	tokens, err := tokenlist.Load(cfg.TokensPath)
 	if err != nil {
@@ -125,11 +126,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 // token id is still collected so that it can fail visibly rather than vanish.
 func logTokenListAnomalies(logger *slog.Logger, tokens tokenlist.List) {
 	if tokens.Duplicates > 0 {
-		logger.Warn("collapsed duplicate token ids",
+		logger.Warn("collapsed duplicate token ids", logging.Cat(logging.CategoryStartup),
 			"duplicates", tokens.Duplicates, "unique", len(tokens.IDs))
 	}
 	if len(tokens.Suspicious) > 0 {
 		logger.Warn("some ids do not look like token ids and will probably fail",
+			logging.Cat(logging.CategoryStartup),
 			"count", len(tokens.Suspicious), "first", tokens.Suspicious[0])
 	}
 }

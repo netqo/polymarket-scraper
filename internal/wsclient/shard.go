@@ -33,6 +33,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/netqo/polymarket-scraper/internal/logging"
 	"github.com/netqo/polymarket-scraper/internal/wire"
 )
 
@@ -205,7 +206,8 @@ func (s *Shard) dial(ctx context.Context) (*websocket.Conn, error) {
 	// is far larger than the library's default limit.
 	conn.SetReadLimit(s.readLimit())
 
-	s.logger.Info("connected", "assets", len(s.opts.AssetIDs))
+	s.logger.Info("connected", logging.Cat(logging.CategoryConnection),
+		"assets", len(s.opts.AssetIDs))
 
 	return conn, nil
 }
@@ -258,7 +260,7 @@ func (s *Shard) Subscribe(assetIDs []string) bool {
 		return true
 	default:
 		s.logger.Warn("dropped a subscription change: the write queue is full",
-			"assets", len(assetIDs))
+			logging.Cat(logging.CategoryConnection), "assets", len(assetIDs))
 		return false
 	}
 }
@@ -277,13 +279,13 @@ func (s *Shard) writeLoop(ctx context.Context, conn *websocket.Conn) {
 			// The literal text PING, not a protocol ping: the server answers
 			// this and ignores the other.
 			if err := conn.Write(ctx, websocket.MessageText, []byte(wire.Ping)); err != nil {
-				s.logger.Debug("keepalive failed", "error", err)
+				s.logger.Debug("keepalive failed", logging.Cat(logging.CategoryConnection), "error", err)
 				return
 			}
 
 		case payload := <-s.outbound:
 			if err := conn.Write(ctx, websocket.MessageText, payload); err != nil {
-				s.logger.Debug("write failed", "error", err)
+				s.logger.Debug("write failed", logging.Cat(logging.CategoryConnection), "error", err)
 				return
 			}
 		}
