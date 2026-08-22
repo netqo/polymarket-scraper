@@ -112,6 +112,12 @@ type record struct {
 	WinningAssetID string   `json:"winning_asset_id,omitempty"`
 	WinningOutcome string   `json:"winning_outcome,omitempty"`
 
+	// Category fields, market only. SportsMarketType is the only grouping the
+	// feed offers and is absent for everything that is not a sports market.
+	SportsMarketType string       `json:"sports_market_type,omitempty"`
+	StartsAt         string       `json:"starts_at,omitempty"`
+	MinTickSize      *decimal.Dec `json:"min_tick_size,omitempty"`
+
 	// ExchangeTimestamp is the feed's own timestamp, verbatim, for records that
 	// came from a message. Epoch milliseconds as a string, not reformatted, for
 	// the same reason the document does not reformat it.
@@ -209,15 +215,36 @@ func (w *Writer) Traded(tokenID string, trade tracker.LastTrade) {
 	})
 }
 
+// Market is a market announced during the window.
+//
+// A struct rather than a long argument list: the announcement now carries enough
+// that positional arguments would be a row of strings nobody could read at the
+// call site.
+type Market struct {
+	Question         string
+	ConditionID      string
+	AssetIDs         []string
+	Outcomes         []string
+	SportsMarketType string
+	StartsAt         string
+	MinTickSize      decimal.Dec
+
+	// ExchangeTimestamp is the feed's own timestamp, verbatim.
+	ExchangeTimestamp string
+}
+
 // Announced records a market created during the window.
-func (w *Writer) Announced(question, conditionID string, assetIDs, outcomes []string, exchangeTimestamp string) {
+func (w *Writer) Announced(market Market) {
 	w.write(record{
 		Kind:              KindMarket,
-		Question:          question,
-		ConditionID:       conditionID,
-		AssetIDs:          assetIDs,
-		Outcomes:          outcomes,
-		ExchangeTimestamp: exchangeTimestamp,
+		Question:          market.Question,
+		ConditionID:       market.ConditionID,
+		AssetIDs:          market.AssetIDs,
+		Outcomes:          market.Outcomes,
+		SportsMarketType:  market.SportsMarketType,
+		StartsAt:          market.StartsAt,
+		MinTickSize:       present(market.MinTickSize),
+		ExchangeTimestamp: market.ExchangeTimestamp,
 	})
 }
 

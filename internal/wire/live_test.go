@@ -133,18 +133,18 @@ func (c *census) add(object map[string]json.RawMessage) {
 // worth having and are not read yet, which is a decision rather than an
 // oversight:
 //
-//   - tags and sports_market_type are market categories, arriving in the feed
-//     itself. The backlog assumed categories were only available from the Gamma
-//     API, which the scope excludes; that assumption was wrong.
-//   - game_start_time and event_message.ticker identify the short-duration
-//     series far better than matching on how a question is worded.
+//   - tags was empty on all 25 distinct announcements observed on 2026-08-22,
+//     across sports and crypto alike. A field that is always empty would be a
+//     column of nulls in the output. Revisit if it is ever seen populated.
 //   - fee_schedule and taker_base_fee are the exchange stating its own fee
 //     terms. The scraper computes no fees, but reporting what the exchange said
-//     is the same free cross-check fee_rate_bps already is.
-//   - order_price_min_tick_size is the tick size before any book has arrived.
+//     is the same free cross-check fee_rate_bps already is. Not read yet.
 //   - clob_token_ids duplicates assets_ids.
 //   - active, description, event_message, fees_enabled, group_item_title and
 //     line are metadata with no use here today.
+//
+// sports_market_type, game_start_time and order_price_min_tick_size were on this
+// list and are now read.
 var known = map[EventType][]string{
 	EventNewMarket: {
 		"active",
@@ -153,11 +153,8 @@ var known = map[EventType][]string{
 		"event_message",
 		"fee_schedule",
 		"fees_enabled",
-		"game_start_time",
 		"group_item_title",
 		"line",
-		"order_price_min_tick_size",
-		"sports_market_type",
 		"tags",
 		"taker_base_fee",
 	},

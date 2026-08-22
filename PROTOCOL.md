@@ -210,6 +210,22 @@ book has diverged, almost always because a delta was missed or misapplied.
  "winning_outcome":"Yes","timestamp":"1766790415550","tags":["stocks"]}
 ```
 
+`new_market` carries a good deal more than the fields above. The ones this build
+reads are `sports_market_type` (the only categorisation on offer, empty for
+anything that is not a sports market), `game_start_time` (the exchange's own
+spelling, `2026-08-23 19:00:00+00`, matching neither of the other timestamp
+conventions) and `order_price_min_tick_size`.
+
+It also carries `tags`, which was empty on all 25 distinct announcements observed
+on 2026-08-22, along with `active`, `clob_token_ids`, `description`,
+`event_message`, `fee_schedule`, `fees_enabled`, `group_item_title`, `line` and
+`taker_base_fee`. `internal/wire/live_test.go` holds the list and fails if the
+exchange adds anything not on it.
+
+The same announcement is re-sent repeatedly: one 45s window produced 146
+`new_market` messages describing a single market, which is why deduplication is
+not optional.
+
 **These feeds are global, not filtered to your subscription.** Every connection
 receives every announcement, which has two consequences: a run with four shards
 sees each announcement four times and must deduplicate, and a run that subscribes

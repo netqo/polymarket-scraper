@@ -77,11 +77,14 @@ func (l *eventLog) noteNewMarket(event wire.NewMarket, at time.Time) bool {
 	l.seenNew[key] = true
 
 	l.newMarkets = append(l.newMarkets, report.NewMarket{
-		Question:    event.Question,
-		ConditionID: report.Optional(event.ConditionID),
-		AssetIDs:    event.AssetIDs,
-		Outcomes:    event.Outcomes,
-		ReceivedAt:  report.FormatTime(at),
+		Question:         event.Question,
+		ConditionID:      report.Optional(event.ConditionID),
+		AssetIDs:         event.AssetIDs,
+		Outcomes:         event.Outcomes,
+		ReceivedAt:       report.FormatTime(at),
+		SportsMarketType: report.Optional(event.SportsMarketType),
+		StartsAt:         report.Optional(event.GameStartTime),
+		MinTickSize:      event.MinTickSize,
 	})
 
 	return true

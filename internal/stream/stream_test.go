@@ -200,7 +200,13 @@ func TestTradesAndFlagsAreWritten(t *testing.T) {
 func TestAnnouncementsAreWritten(t *testing.T) {
 	writer, path := open(t)
 
-	writer.Announced("Bitcoin Up or Down", "0xcond", []string{"777", "888"}, []string{"Up", "Down"}, "1786728400000")
+	writer.Announced(Market{
+		Question:          "Bitcoin Up or Down",
+		ConditionID:       "0xcond",
+		AssetIDs:          []string{"777", "888"},
+		Outcomes:          []string{"Up", "Down"},
+		ExchangeTimestamp: "1786728400000",
+	})
 	writer.Resolved("0xmarket", []string{"111", "222"}, "111", "Yes", "1786790415550")
 
 	records := lines(t, path)
@@ -210,6 +216,13 @@ func TestAnnouncementsAreWritten(t *testing.T) {
 
 	if records[1]["kind"] != KindMarket || records[1]["question"] != "Bitcoin Up or Down" {
 		t.Errorf("market = %v", records[1])
+	}
+	// A crypto announcement carries no category, and the fields it does not
+	// have are left out rather than written as empty strings.
+	for _, key := range []string{"sports_market_type", "starts_at", "min_tick_size"} {
+		if got, present := records[1][key]; present {
+			t.Errorf("%s = %v, want it left out for a market with none", key, got)
+		}
 	}
 	if records[2]["kind"] != KindResolved || records[2]["winning_outcome"] != "Yes" {
 		t.Errorf("resolved = %v", records[2])
@@ -318,4 +331,36 @@ func TestTheWriterIsAnObserver(t *testing.T) {
 	writer, _ := open(t)
 
 	var _ tracker.Observer = writer
+}
+
+// The only categorisation the feed offers, and it is absent for everything that
+// is not a sports market. Reported as it arrives; the scraper groups nothing
+// itself.
+func TestASportsMarketCarriesItsCategory(t *testing.T) {
+	writer, path := open(t)
+
+	writer.Announced(Market{
+		Question:          "Commanders vs. Lions, 1H O/U 19.5",
+		ConditionID:       "0xcond",
+		AssetIDs:          []string{"111", "222"},
+		Outcomes:          []string{"Over", "Under"},
+		SportsMarketType:  "first_half_totals",
+		StartsAt:          "2026-08-22 16:00:00+00",
+		MinTickSize:       decimal.Parse("0.01"),
+		ExchangeTimestamp: "1786728400000",
+	})
+
+	market := lines(t, path)[1]
+	checks := map[string]any{
+		"sports_market_type": "first_half_totals",
+		// The exchange's own spelling, which is neither epoch milliseconds nor
+		// ISO-8601. Passed through rather than reformatted.
+		"starts_at":     "2026-08-22 16:00:00+00",
+		"min_tick_size": "0.01",
+	}
+	for key, want := range checks {
+		if got := market[key]; got != want {
+			t.Errorf("%s = %v, want %v", key, got, want)
+		}
+	}
 }

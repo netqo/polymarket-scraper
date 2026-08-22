@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/netqo/polymarket-scraper/internal/logging"
+	"github.com/netqo/polymarket-scraper/internal/stream"
 	"github.com/netqo/polymarket-scraper/internal/tracker"
 	"github.com/netqo/polymarket-scraper/internal/wire"
 	"github.com/netqo/polymarket-scraper/internal/wsclient"
@@ -189,8 +190,16 @@ func (e *Engine) applyEvent(s *shardState, event wire.Event, at time.Time) {
 		// log deduplicates.
 		if firstSighting := e.events.noteNewMarket(typed, at); firstSighting {
 			if e.changes != nil {
-				e.changes.Announced(typed.Question, typed.ConditionID,
-					typed.AssetIDs, typed.Outcomes, typed.Timestamp)
+				e.changes.Announced(stream.Market{
+					Question:          typed.Question,
+					ConditionID:       typed.ConditionID,
+					AssetIDs:          typed.AssetIDs,
+					Outcomes:          typed.Outcomes,
+					SportsMarketType:  typed.SportsMarketType,
+					StartsAt:          typed.GameStartTime,
+					MinTickSize:       typed.MinTickSize,
+					ExchangeTimestamp: typed.Timestamp,
+				})
 			}
 			e.admitAnnounced(s, typed, at)
 		}

@@ -178,6 +178,26 @@ type NewMarket struct {
 	AssetIDs    StringList `json:"assets_ids"`
 	Outcomes    StringList `json:"outcomes"`
 	Timestamp   string     `json:"timestamp"`
+
+	// SportsMarketType is what kind of sports market this is, for example
+	// "soccer_exact_score" or "first_half_totals". Empty for everything that is
+	// not a sports market, which includes the short-duration crypto series.
+	//
+	// It is the only categorisation the feed offers. The tags field alongside it
+	// was empty on every announcement observed, so it is not read.
+	SportsMarketType string `json:"sports_market_type"`
+
+	// GameStartTime is when the underlying event begins, as the exchange spells
+	// it: "2026-08-23 19:00:00+00", which is neither epoch milliseconds like the
+	// feed's other timestamps nor ISO-8601 like the scraper's own. Passed
+	// through rather than reformatted, for the same reason every other value is.
+	// Empty for markets with no scheduled event.
+	GameStartTime string `json:"game_start_time"`
+
+	// MinTickSize is the market's minimum price increment, available here before
+	// any book has arrived for its tokens. The websocket's book event carries a
+	// tick size too, but not until it turns up.
+	MinTickSize decimal.Dec `json:"order_price_min_tick_size"`
 }
 
 // Type implements Event.
