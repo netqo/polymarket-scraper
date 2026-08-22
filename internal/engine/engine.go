@@ -27,6 +27,7 @@ import (
 	"github.com/netqo/polymarket-scraper/internal/logging"
 	"github.com/netqo/polymarket-scraper/internal/report"
 	"github.com/netqo/polymarket-scraper/internal/restclient"
+	"github.com/netqo/polymarket-scraper/internal/stream"
 	"github.com/netqo/polymarket-scraper/internal/tokenlist"
 	"github.com/netqo/polymarket-scraper/internal/tracker"
 )
@@ -43,6 +44,11 @@ type Options struct {
 	// HTTPClient replaces the transport for both REST and the websocket. Tests
 	// point it at in-process servers; production leaves it nil.
 	HTTPClient *http.Client
+
+	// Stream receives the run's changes as they happen. Nil disables it, which
+	// is the default. Its lifetime belongs to the caller, for the same reason
+	// the logger's does: both outlive the collection they describe.
+	Stream *stream.Writer
 
 	// Halt terminates the process when a run overruns its budget. Tests replace
 	// it so the watchdog can be observed rather than obeyed.
@@ -65,6 +71,13 @@ type Engine struct {
 	// discoverMatch narrows which announcements are acted on. Nil takes on
 	// everything. Compiled once, since it is consulted per announcement.
 	discoverMatch *regexp.Regexp
+
+	// observer fans a token's changes out to the log and the change stream.
+	observer observer
+
+	// changes is the stream, kept so announcements can reach it too. Nil when
+	// none was configured.
+	changes *stream.Writer
 
 	shards shardSet
 	resync chan resyncRequest
@@ -132,7 +145,7 @@ func New(opts Options) (*Engine, error) {
 		halt = func() {}
 	}
 
-	return &Engine{
+	engine := &Engine{
 		cfg:           opts.Config,
 		tokens:        opts.Tokens,
 		logger:        logger,
@@ -141,6 +154,7 @@ func New(opts Options) (*Engine, error) {
 		halt:          halt,
 		rest:          rest,
 		discoverMatch: discoverMatch,
+		changes:       opts.Stream,
 		errors:        newErrorSink(opts.Config),
 		events:        newEventLog(opts.Config.MaxEvents),
 		// Sized so every tracker that can exist can have a re-seed outstanding
@@ -150,7 +164,12 @@ func New(opts Options) (*Engine, error) {
 		// push a token that was actually asked for onto the failure path.
 		resync:    make(chan resyncRequest, len(opts.Tokens.IDs)+opts.Config.DiscoverLimit+opts.Config.ResyncWorkers),
 		requested: requestedSet(opts.Tokens.IDs),
-	}, nil
+	}
+
+	// Built after the engine exists, because it reports through it.
+	engine.observer = observer{engine: engine, changes: opts.Stream}
+
+	return engine, nil
 }
 
 // Run collects the window and returns the document.
@@ -187,7 +206,7 @@ func (e *Engine) trackerOptions() tracker.Options {
 		ReorderTolerance: e.cfg.ReorderTolerance,
 		StrictBestBidAsk: e.cfg.StrictBestBidAsk,
 		RESTOnly:         e.cfg.RESTOnly,
-		OnFlag:           e.logFlag,
+		Observer:         e.observer,
 	}
 }
 
