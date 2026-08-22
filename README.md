@@ -79,7 +79,9 @@ success, so a non-empty stdout is a reliable success signal.
 
 Run `polymarket-scraper --help` for the authoritative flag list. The output
 contract is documented in `SCHEMA.md`, which is the file to paste into a
-consuming agent's prompt.
+consuming agent's prompt. `PROTOCOL.md` describes the other side: what the
+exchange sends, and the several places where it disagrees with its own published
+documentation.
 
 ### Watching a run
 

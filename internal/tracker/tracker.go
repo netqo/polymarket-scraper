@@ -263,10 +263,17 @@ func (t *Tracker) ApplyTickSize(change wire.TickSizeChange, _ time.Time) Effect 
 // ApplyBestBidAsk cross-checks the published top of book against the maintained
 // one.
 //
+// There are two independent answers to the same question here. The scraper
+// computes its own best bid and ask from the snapshot it was given plus every
+// delta since; the exchange separately publishes what it thinks they are. When
+// the two disagree, the local book has diverged from the exchange's, which in
+// practice means a delta was missed or misapplied. That is worth knowing about,
+// because a book built on a missed update stays plausible while being wrong.
+//
 // The published quote is never used as the source of the book, because it is
 // not guaranteed to be delivered and correctness must not depend on an optional
-// message. It is a good independent check, though: a disagreement means the
-// maintained book has drifted.
+// message. By default a disagreement raises a flag and nothing more;
+// StrictBestBidAsk promotes it to a full re-seed.
 func (t *Tracker) ApplyBestBidAsk(quote wire.BestBidAsk, _ time.Time) Effect {
 	t.sawAnyMessage = true
 

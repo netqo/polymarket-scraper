@@ -10,6 +10,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/netqo/polymarket-scraper/internal/config"
 	"github.com/netqo/polymarket-scraper/internal/wire"
 )
 
@@ -138,7 +139,10 @@ func (f *FakeWS) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = conn.CloseNow() }()
 
-	conn.SetReadLimit(32 << 20)
+	// Matched to the client's own limit rather than repeated as a number: a
+	// fake that accepted less than the real server would fail a test for a
+	// reason that has nothing to do with the code under test.
+	conn.SetReadLimit(config.DefaultReadLimit)
 
 	f.mu.Lock()
 	f.connections++

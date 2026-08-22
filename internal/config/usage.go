@@ -102,7 +102,9 @@ OTHER
                     the run is still going. Created if absent, mode 0600.
                     Off by default.
   --version         Print the version and exit.
-  --help            Print this text and exit.
+  --help            Print this text and exit. --help=json prints the same
+                    contract as JSON: the flags and their defaults, the exit
+                    codes, the settings file's shape, and this text verbatim.
 
 OUTPUT
   Every requested token appears in the output exactly once with an explicit

@@ -45,6 +45,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprint(stdout, config.Usage())
 		return exitOK
 
+	case errors.Is(err, config.ErrHelpJSON):
+		document, encodeErr := config.UsageJSON()
+		if encodeErr != nil {
+			fmt.Fprintf(stderr, "%s\n", encodeErr)
+			return exitFailed
+		}
+		fmt.Fprintln(stdout, document)
+		return exitOK
+
 	case errors.Is(err, config.ErrVersion):
 		fmt.Fprintln(stdout, buildVersion())
 		return exitOK
