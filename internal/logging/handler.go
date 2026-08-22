@@ -212,10 +212,11 @@ func (h *Handler) Handle(_ context.Context, record slog.Record) error {
 
 	buf = append(buf, h.preformat...)
 	record.Attrs(func(attr slog.Attr) bool {
-		// The kind chose the prefix; repeating it as an attribute would say the
-		// same thing twice on every line that has one. Skipped on exactly the
-		// same condition kindOf matches it, so the two cannot disagree.
-		if attr.Key == KindKey {
+		// Both of these are routing rather than content. The kind already chose
+		// the prefix and the category has already decided whether the record is
+		// here at all, so rendering either would put a word on every line that
+		// tells its reader nothing.
+		if attr.Key == KindKey || attr.Key == CategoryKey {
 			return true
 		}
 		buf = h.appendAttr(buf, h.groups, attr)
