@@ -248,8 +248,14 @@ func (e *Engine) applyControl(s *shardState, msg control) {
 		// Set here as well as by the broadcaster, so that the message carries
 		// its whole meaning: a shard that receives a sweep has been told
 		// discovery is over, whether or not the broadcast reached the others.
+		//
+		// Engine-wide rather than per shard, because an announcement seen by one
+		// connection can be placed on another. A token subscribed in the last
+		// seconds of a window would have almost no history behind it and no time
+		// to recover from anything going wrong, which is worse than not having
+		// it: a consumer would have to tell it apart from a fully observed one,
+		// and nothing in the document would help.
 		e.discoveryClosed.Store(true)
-		s.closeDiscovery()
 		for _, t := range s.trackers {
 			e.act(s, t, t.Sweep())
 		}

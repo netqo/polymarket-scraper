@@ -104,6 +104,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Deprecated
 
 ### Removed
+- Tracker state that recorded the same fact twice and could drift:
+  `sawAnyMessage`, which was assigned in six places and read in none;
+  `sawDelta`, which was `updatesApplied > 0` spelled a second way; and
+  `seededFromREST`, replaced by recording the `Source` directly when the book is
+  seeded. `shardState.closedToDiscovery` went the same way, having become
+  write-only when the discovery flag moved engine-wide.
 - The unused unsubscribe message builder. The protocol defines the operation but
   this build does not send it.
 - The unreachable `stale` tracker state, the shard's write-only discovered-token

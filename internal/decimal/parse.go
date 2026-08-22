@@ -72,6 +72,12 @@ func parseNano(s string) (int64, bool) {
 // scaleDigits combines the integer and fractional digit runs into a fixed-point
 // magnitude, reporting ok=false on overflow. The fraction is truncated toward
 // zero past Scale digits.
+//
+// The loops over digit runs are indexed rather than ranged deliberately. These
+// walk bytes, and "for i := range integer" over a string walks runes instead,
+// which for a decimal literal happens to give the same answer right up until it
+// does not. Spelling the bound out is what keeps a later simplification from
+// quietly changing the unit.
 func scaleDigits(integer, fraction string) (int64, bool) {
 	const unit = int64(1_000_000_000) // 10^Scale
 
@@ -94,7 +100,7 @@ func scaleDigits(integer, fraction string) (int64, bool) {
 	value *= unit
 
 	var scaled int64
-	for i := 0; i < Scale; i++ {
+	for i := range Scale {
 		scaled *= 10
 		if i < len(fraction) {
 			scaled += int64(fraction[i] - '0')
