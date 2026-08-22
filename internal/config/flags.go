@@ -228,6 +228,8 @@ func newFlagSet(cfg *Config, showVersion *bool) *flag.FlagSet {
 // file accepts both spellings through the same parser.
 type seconds struct{ target *time.Duration }
 
+// String implements flag.Value, reporting the current value as a bare number of
+// seconds so that --help and error messages use the unit the flag accepts.
 func (s seconds) String() string {
 	if s.target == nil {
 		return ""
@@ -236,6 +238,7 @@ func (s seconds) String() string {
 	return strconv.FormatFloat(s.target.Seconds(), 'g', -1, 64)
 }
 
+// Set implements flag.Value.
 func (s seconds) Set(raw string) error {
 	parsed, err := parseDuration(raw)
 	if err != nil {

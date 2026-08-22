@@ -314,6 +314,9 @@ type statusError struct {
 	RetryAfter time.Duration
 }
 
+// Error implements error. The server's own instruction is included when it gave
+// one, since that is the difference between a failure worth retrying soon and
+// one worth waiting out.
 func (e *statusError) Error() string {
 	if e.RetryAfter > 0 {
 		return fmt.Sprintf("the server returned %d and asked to wait %v", e.Code, e.RetryAfter)
