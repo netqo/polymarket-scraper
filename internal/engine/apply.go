@@ -233,7 +233,14 @@ func (e *Engine) applyControl(s *shardState, msg control) {
 			return t.NoteTokenNotFound()
 		})
 
+	case ctrlAdopt:
+		e.adopt(s, msg.tokens, msg.at)
+
 	case ctrlSweep:
+		// Set here as well as by the broadcaster, so that the message carries
+		// its whole meaning: a shard that receives a sweep has been told
+		// discovery is over, whether or not the broadcast reached the others.
+		e.discoveryClosed.Store(true)
 		s.closeDiscovery()
 		for _, t := range s.trackers {
 			e.act(s, t, t.Sweep())

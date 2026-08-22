@@ -73,19 +73,20 @@ func TestDiscoveryStopsAtTheLimit(t *testing.T) {
 	if got := discoveredCount(shard); got != 3 {
 		t.Errorf("took on %d announced tokens, want the limit of 3", got)
 	}
-	if !shard.closedToDiscovery {
-		t.Error("the shard is still open to discovery after hitting the limit")
+	if !engine.discoveryClosed.Load() {
+		t.Error("discovery is still open after hitting the limit")
 	}
 	if !mentions(engine.errors.Messages(), "limit of 3") {
 		t.Errorf("errors = %v, want the limit recorded", engine.errors.Messages())
 	}
 }
 
-// A connection still has a hard ceiling: past roughly 750 assets the server
-// accepts the subscription and silently stops sending snapshots. Announced
-// tokens must not push a connection over it, because doing so would cost the
-// tokens that were actually requested.
-func TestDiscoveryStopsAtTheConnectionCeiling(t *testing.T) {
+// A connection has a hard ceiling: past roughly 750 assets the server accepts
+// the subscription and silently stops sending snapshots. Announced tokens must
+// not push a connection over it, because doing so would cost the tokens that
+// were actually requested. Reaching it used to stop discovery outright; now the
+// run opens another connection and carries on.
+func TestDiscoveryOpensAnotherConnectionAtTheCeiling(t *testing.T) {
 	rest := testsupport.NewFakeREST(t)
 
 	cfg := websocketConfig("ws://127.0.0.1:1/none", rest.URL())
@@ -101,25 +102,67 @@ func TestDiscoveryStopsAtTheConnectionCeiling(t *testing.T) {
 		t.Fatalf("New returned error: %v", err)
 	}
 	engine.buildShards()
-	shard := engine.shards[0]
+	armDiscovery(t, engine)
+	shard := engine.shards.all()[0]
 
-	// Ask for more than the remaining headroom.
+	// More than the 50 of headroom the first connection has left.
 	announced := make(wire.StringList, 0, 80)
 	for i := range 80 {
 		announced = append(announced, "announced-"+strconv.Itoa(i))
 	}
 	engine.admitAnnounced(shard, wire.NewMarket{ID: "1", AssetIDs: announced}, time.Now())
 
-	if len(shard.trackers) > config.MaxAssetsCeiling {
-		t.Errorf("the shard holds %d assets, past the ceiling of %d",
-			len(shard.trackers), config.MaxAssetsCeiling)
+	if got := len(shard.trackers); got > config.MaxAssetsCeiling {
+		t.Errorf("the first connection holds %d assets, past the ceiling of %d",
+			got, config.MaxAssetsCeiling)
 	}
-	if discoveredCount(shard) != 50 {
-		t.Errorf("took on %d announced tokens, want the 50 of headroom below the ceiling",
-			discoveredCount(shard))
+	if got := discoveredCount(shard); got != 50 {
+		t.Errorf("the first connection took %d announced tokens, want its 50 of headroom", got)
 	}
-	if !mentions(engine.errors.Messages(), "ceiling") {
-		t.Errorf("errors = %v, want the ceiling recorded", engine.errors.Messages())
+
+	// The rest went somewhere rather than being dropped.
+	if got := engine.shards.count(); got != 2 {
+		t.Fatalf("got %d connections, want a second one opened for the overflow", got)
+	}
+	if got := int(engine.discovered.Load()); got != 80 {
+		t.Errorf("%d announced tokens were taken on in total, want all 80", got)
+	}
+	if engine.discoveryClosed.Load() {
+		t.Error("discovery closed itself despite a connection being available")
+	}
+}
+
+// Growth is bounded. Without a ceiling on connections a run could answer a
+// stream of announcements by opening sockets without end.
+func TestDiscoveryStopsWhenNoMoreConnectionsMayBeOpened(t *testing.T) {
+	rest := testsupport.NewFakeREST(t)
+
+	cfg := websocketConfig("ws://127.0.0.1:1/none", rest.URL())
+	cfg.MaxAssetsPerConnection = 10
+	cfg.DiscoverLimit = 500
+
+	engine, err := New(Options{Config: cfg, Tokens: tokenlist.List{IDs: scaleIDs(10)}})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	engine.buildShards()
+	armDiscovery(t, engine)
+	shard := engine.shards.all()[0]
+
+	// Far more than the budget allows connections for.
+	for round := range 60 {
+		announced := make(wire.StringList, 0, 10)
+		for i := range 10 {
+			announced = append(announced, "announced-"+strconv.Itoa(round*10+i))
+		}
+		engine.admitAnnounced(shard, wire.NewMarket{ID: strconv.Itoa(round), AssetIDs: announced}, time.Now())
+	}
+
+	if got := engine.shards.count(); got > engine.maxShards() {
+		t.Errorf("opened %d connections, past the bound of %d", got, engine.maxShards())
+	}
+	if !engine.discoveryClosed.Load() {
+		t.Error("discovery is still open despite every connection being full")
 	}
 }
 
@@ -273,8 +316,24 @@ func engineForDiscovery(t *testing.T, limit int) *Engine {
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
+	armDiscovery(t, engine)
 
 	return engine
+}
+
+// armDiscovery supplies the running state a collection would have set, so that
+// a test can drive admitAnnounced directly. Growing a connection needs somewhere
+// to start it into; in production that is always present, because the goroutine
+// calling this was started into it.
+func armDiscovery(t *testing.T, engine *Engine) {
+	t.Helper()
+
+	engine.initialShards = engine.shards.count()
+	engine.running = &collection{
+		collectCtx: t.Context(),
+		drainCtx:   t.Context(),
+		results:    make(chan shardResult, 16),
+	}
 }
 
 // The consuming agent's documented configuration asks for 400 tokens, and the
@@ -296,11 +355,12 @@ func TestDiscoveryStillWorksOnAFullShortlist(t *testing.T) {
 		t.Fatalf("New returned error: %v", err)
 	}
 	engine.buildShards()
+	armDiscovery(t, engine)
 
-	if len(engine.shards) != 1 {
-		t.Fatalf("got %d shards, want 1 at exactly the connection width", len(engine.shards))
+	if engine.shards.count() != 1 {
+		t.Fatalf("got %d shards, want 1 at exactly the connection width", engine.shards.count())
 	}
-	shard := engine.shards[0]
+	shard := engine.shards.all()[0]
 
 	engine.admitAnnounced(shard, wire.NewMarket{
 		ID:       "1",

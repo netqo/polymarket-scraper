@@ -36,16 +36,22 @@ func (e *Engine) runWebsocket(ctx context.Context) (report.Document, error) {
 	e.noteTokenListAnomalies()
 	e.buildShards()
 
-	results := make(chan shardResult, len(e.shards))
+	// Sized for every connection the run could end up with, discovery included.
+	// An apply goroutine blocking on a full results channel is the one failure
+	// the whole shutdown design exists to rule out.
+	results := make(chan shardResult, e.maxShards())
+
+	// Set before any shard goroutine exists, and only read after, so discovery
+	// can start a connection of its own without a race.
+	e.running = &collection{collectCtx: collectCtx, drainCtx: drainCtx, results: results}
 
 	for range e.cfg.ResyncWorkers {
 		go e.resyncWorker(drainCtx)
 	}
 	go e.seedMetadata(drainCtx)
 
-	for _, shard := range e.shards {
-		go e.runShard(collectCtx, shard)
-		go e.applyLoop(collectCtx, drainCtx, shard, results)
+	for _, shard := range e.shards.all() {
+		e.startShard(shard)
 	}
 
 	sweep := time.AfterFunc(budget.Sweep, func() { e.broadcastSweep(collectCtx) })
@@ -53,7 +59,7 @@ func (e *Engine) runWebsocket(ctx context.Context) (report.Document, error) {
 
 	e.logger.Info("collecting", logging.Cat(logging.CategoryProgress),
 		"tokens", len(e.tokens.IDs),
-		"shards", len(e.shards),
+		"shards", e.shards.count(),
 		"window", budget.Collect)
 
 	snapshots := e.gatherResults(startedAt.Add(budget.Finalize), results)
@@ -61,9 +67,17 @@ func (e *Engine) runWebsocket(ctx context.Context) (report.Document, error) {
 	return e.finalizeDocument(startedAt, e.now(), snapshots), nil
 }
 
+// startShard begins a connection and the goroutine that owns its trackers.
+func (e *Engine) startShard(s *shardState) {
+	go e.runShard(e.running.collectCtx, s)
+	go e.applyLoop(e.running.collectCtx, e.running.drainCtx, s, e.running.results)
+}
+
 // broadcastSweep gives every token that still has no book one last chance.
 func (e *Engine) broadcastSweep(ctx context.Context) {
-	for _, shard := range e.shards {
+	e.discoveryClosed.Store(true)
+
+	for _, shard := range e.shards.all() {
 		shard.send(ctx, control{kind: ctrlSweep, at: e.now()})
 	}
 }
@@ -77,12 +91,16 @@ func (e *Engine) broadcastSweep(ctx context.Context) {
 // outcome the design exists to rule out.
 func (e *Engine) gatherResults(deadline time.Time, results <-chan shardResult) map[string]tracker.Snapshot {
 	snapshots := make(map[string]tracker.Snapshot, len(e.tokens.IDs))
-	reported := make(map[int]bool, len(e.shards))
+	reported := make(map[int]bool, e.shards.count())
 
 	timeout := time.NewTimer(time.Until(deadline))
 	defer timeout.Stop()
 
-	for len(reported) < len(e.shards) {
+	// The count is re-read each time round, because discovery can add a
+	// connection while this is waiting. Discovery stops at the sweep and a
+	// shard only reports once the window has closed, so by the time anything
+	// arrives here the set has stopped changing.
+	for len(reported) < e.shards.count() {
 		select {
 		case result := <-results:
 			reported[result.shardID] = true
@@ -101,7 +119,7 @@ func (e *Engine) gatherResults(deadline time.Time, results <-chan shardResult) m
 
 // recordUnreportedShards reports every token of a silent shard as a failure.
 func (e *Engine) recordUnreportedShards(reported map[int]bool, snapshots map[string]tracker.Snapshot) {
-	for _, shard := range e.shards {
+	for _, shard := range e.shards.all() {
 		if reported[shard.id] {
 			continue
 		}

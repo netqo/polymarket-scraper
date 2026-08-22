@@ -47,11 +47,12 @@ func (e *Engine) resyncWorker(ctx context.Context) {
 // so a shard's drain waits for its own work and nobody else's.
 func (e *Engine) finishOutstanding(batch []resyncRequest) {
 	for _, request := range batch {
-		if request.shardID < 0 || request.shardID >= len(e.shards) {
+		shard, ok := e.shards.get(request.shardID)
+		if !ok {
 			continue
 		}
 
-		e.shards[request.shardID].outstanding.Add(-1)
+		shard.outstanding.Add(-1)
 	}
 }
 
@@ -154,11 +155,12 @@ func (e *Engine) fetchOne(ctx context.Context, request resyncRequest) {
 
 // route delivers a control message to the shard that owns a token.
 func (e *Engine) route(ctx context.Context, shardID int, msg control) {
-	if shardID < 0 || shardID >= len(e.shards) {
+	shard, ok := e.shards.get(shardID)
+	if !ok {
 		return
 	}
 
-	e.shards[shardID].send(ctx, msg)
+	shard.send(ctx, msg)
 }
 
 // seedMetadata fetches every token's book once at the start of the run.
@@ -168,7 +170,7 @@ func (e *Engine) route(ctx context.Context, shardID int, msg control) {
 // fallback: without it those fields would be null on every token of every run.
 // It also seeds the book for anything the websocket has not delivered yet.
 func (e *Engine) seedMetadata(ctx context.Context) {
-	for _, shard := range e.shards {
+	for _, shard := range e.shards.all() {
 		for _, batch := range chunk(shard.assetIDs, e.cfg.RESTBatchSize) {
 			if ctx.Err() != nil {
 				return
