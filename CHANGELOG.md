@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Settings can come from a TOML file, found via `--config`, `POLYMARKET_CONFIG`,
+  or `polymarket-scraper.toml` in the working directory.
+  `polymarket-scraper.example.toml` is a fully commented copy in which every
+  value is the default, held to that by a test. An unknown setting is an error
+  rather than a warning, because a typo that is silently ignored looks identical
+  to a setting that had no effect.
+- `--mode` and `POLYMARKET_MODE`, selecting `production` or `debug`. A mode is a
+  bundle of defaults rather than a setting of its own: `debug` drops the log
+  level and stops truncating attribute values on the terminal. Anything set
+  explicitly still wins over it.
+- The tuning that used to be compiled in is now reachable from the settings
+  file: REST attempts, timeout and backoffs, the cap on `Retry-After`, the
+  re-seed worker count, reconnection backoffs, the websocket read limit, and the
+  bounds on the output document's error and event lists. Changing one no longer
+  means rebuilding.
 - `--log-file`, which appends every log record to a file as the run happens.
   stderr is only readable by whatever launched the process, so a run in progress
   could not be followed from anywhere else. The file is appended to at mode

@@ -36,13 +36,35 @@ nix develop
 ```
 
 This project is **credential-free by design** (requirement A6): no API keys, no
-wallet material, no order endpoints, ever. Configuration is entirely via CLI
-flags, with two optional environment variables:
+wallet material, no order endpoints, ever.
 
-| Variable                 | Required | Description                                    |
-|--------------------------|----------|------------------------------------------------|
-| `LOG_LEVEL`              | no       | `debug`/`info`/`warn`/`error` (default `info`) |
-| `POLYMARKET_LIVE_TOKENS` | no       | Token file path; enables `make test-live`      |
+Settings come from four places, each overriding the one before it: the mode's
+bundle of defaults, a TOML file, the environment, then command line flags. A
+flag always wins, because the file is the considered configuration and a flag is
+what someone typed for one run.
+
+```bash
+cp polymarket-scraper.example.toml polymarket-scraper.toml
+```
+
+A file with that name in the working directory is picked up automatically;
+anywhere else, name it with `--config FILE`. The example is fully commented and
+every value in it is the default, so a copy with nothing changed behaves exactly
+like running with no file at all -- there is a test that keeps that true. An
+unknown setting is an error rather than a warning, because a typo that was
+silently ignored looks identical to a setting that had no effect.
+
+Tuning that has no flag lives in the file alone: retry counts and timeouts,
+backoffs, worker counts, and the bounds on the output document's lists. Those
+were constants compiled into the binary until they were consolidated here, which
+is the point: changing one no longer means rebuilding.
+
+| Variable                 | Required | Description                                       |
+|--------------------------|----------|---------------------------------------------------|
+| `LOG_LEVEL`              | no       | `debug`/`info`/`warn`/`error` (default `info`)    |
+| `POLYMARKET_MODE`        | no       | `production` or `debug`; same as `--mode`         |
+| `POLYMARKET_CONFIG`      | no       | Settings file path; same as `--config`            |
+| `POLYMARKET_LIVE_TOKENS` | no       | Token file path; enables `make test-live`         |
 
 ## Usage
 
