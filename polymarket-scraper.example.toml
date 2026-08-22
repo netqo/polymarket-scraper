@@ -167,6 +167,40 @@ file = ""
 # applies no limit, so nothing is lost by cutting it here.
 console_value_limit = 300
 
+# Which classes of record to write.
+#
+# Level is the wrong axis for this. Wanting every per-token flag and none of the
+# keepalive chatter, or the reverse while chasing a disconnect, are both
+# requests about subject matter, and both of those records sit at the same
+# level: raising it to quieten one silences the other with it.
+#
+# Errors are never affected by any of these. A category says what a record is
+# about, not whether it matters, and something has to reach a reader who has
+# switched everything else off, or a silent run and a broken one look alike.
+[logging.categories]
+# The configuration record and what was odd about the inputs.
+startup = true
+
+# The run reaching its stages.
+progress = true
+
+# Sockets opening, closing and misbehaving.
+connection = true
+
+# Per-token observations as the trackers raise them: delta_gap, disconnected,
+# crossed_book and the rest. The highest volume of the lot on a bad run, and
+# the most useful.
+flags = true
+
+# Fetches that did not go to plan.
+rest = true
+
+# A message the scraper could not read.
+decode = true
+
+# Tokens taken on mid-window from announcements.
+discovery = true
+
 
 # LIMITS ----------------------------------------------------------------------
 #

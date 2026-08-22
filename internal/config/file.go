@@ -105,9 +105,20 @@ type restSection struct {
 }
 
 type loggingSection struct {
-	Level             *string `toml:"level"`
-	File              *string `toml:"file"`
-	ConsoleValueLimit *int    `toml:"console_value_limit"`
+	Level             *string            `toml:"level"`
+	File              *string            `toml:"file"`
+	ConsoleValueLimit *int               `toml:"console_value_limit"`
+	Categories        *categoriesSection `toml:"categories"`
+}
+
+type categoriesSection struct {
+	Startup    *bool `toml:"startup"`
+	Progress   *bool `toml:"progress"`
+	Connection *bool `toml:"connection"`
+	Flags      *bool `toml:"flags"`
+	REST       *bool `toml:"rest"`
+	Decode     *bool `toml:"decode"`
+	Discovery  *bool `toml:"discovery"`
 }
 
 type limitsSection struct {
@@ -223,6 +234,16 @@ func (f *file) apply(cfg *Config) {
 		assign(&cfg.LogLevel, s.Level)
 		assign(&cfg.LogFile, s.File)
 		assign(&cfg.ConsoleValueLimit, s.ConsoleValueLimit)
+
+		if c := s.Categories; c != nil {
+			assign(&cfg.LogCategories.Startup, c.Startup)
+			assign(&cfg.LogCategories.Progress, c.Progress)
+			assign(&cfg.LogCategories.Connection, c.Connection)
+			assign(&cfg.LogCategories.Flags, c.Flags)
+			assign(&cfg.LogCategories.REST, c.REST)
+			assign(&cfg.LogCategories.Decode, c.Decode)
+			assign(&cfg.LogCategories.Discovery, c.Discovery)
+		}
 	}
 
 	if s := f.Limits; s != nil {
