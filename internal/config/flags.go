@@ -231,6 +231,7 @@ func newFlagSet(cfg *Config, showVersion *bool, help *string) *flag.FlagSet {
 
 	fs.StringVar(&cfg.TokensPath, "tokens", cfg.TokensPath, "")
 	fs.StringVar(&cfg.OutPath, "out", cfg.OutPath, "")
+	fs.StringVar(&cfg.StreamPath, "stream", cfg.StreamPath, "")
 	fs.Var(seconds{&cfg.Duration}, "duration", "")
 	fs.Var(seconds{&cfg.Grace}, "grace", "")
 

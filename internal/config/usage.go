@@ -50,6 +50,13 @@ REQUIRED
                     the path either holds the previous run's document or this
                     one's, never a partial file.
 
+OPTIONAL OUTPUT
+  --stream FILE     Also append the run's changes to this file as they happen,
+                    one JSON object per line: quotes when a top of book moves,
+                    trades, flags and announcements. Meant to be tailed while
+                    the run is going, which the output document cannot be
+                    because it is written once at the end. Off by default.
+
 WINDOW
   --duration N      Length of the collection window. A bare number is seconds;
                     a value such as 1m30s also works. Default %[2]s.

@@ -134,7 +134,7 @@ func TestEveryBoundFlagIsOverriddenByATest(t *testing.T) {
 	// --version, --help, --config and --mode are exercised by their own tests;
 	// everything else is covered by TestParseOverridesEveryDefault above.
 	covered := map[string]bool{
-		"version": true, "help": true, "config": true, "mode": true,
+		"version": true, "help": true, "config": true, "mode": true, "stream": true,
 		"tokens": true, "out": true, "duration": true, "grace": true,
 		"rest-only": true, "rest-rate": true, "rest-batch-size": true,
 		"max-assets-per-connection": true, "ping-interval": true,

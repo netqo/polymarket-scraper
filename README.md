@@ -79,9 +79,25 @@ success, so a non-empty stdout is a reliable success signal.
 
 Run `polymarket-scraper --help` for the authoritative flag list. The output
 contract is documented in `SCHEMA.md`, which is the file to paste into a
-consuming agent's prompt. `PROTOCOL.md` describes the other side: what the
-exchange sends, and the several places where it disagrees with its own published
+consuming agent's prompt. `STREAM.md` documents the optional
+real-time output. `PROTOCOL.md` describes the other side: what the exchange
+sends, and the several places where it disagrees with its own published
 documentation.
+
+### Reading a run as it happens
+
+`--stream` appends the run's changes to a file, one JSON object per line, so
+something can act on them during the window rather than waiting for the document:
+
+```bash
+polymarket-scraper --tokens tokens.txt --out books.json --stream changes.jsonl &
+tail -f changes.jsonl
+```
+
+Quotes are written when a top of book moves, alongside trades, flags and
+announcements. The document remains the contract and carries the guarantees; the
+stream is the same run told as it happens and carries none of them.
+`STREAM.md` is its contract.
 
 ### Watching a run
 

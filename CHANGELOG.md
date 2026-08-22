@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `--stream FILE` and `input.stream`, appending the run's changes to a file as
+  they happen: one JSON object per line, carrying quotes when a top of book
+  moves, trades, flags and announcements. The output document is complete but
+  arrives at the end, which is no use to anything deciding what to do during the
+  window. A quote is written only when the top of book actually moves, and a
+  price respelled from `0.98` to `0.980` is not a move. Documented in
+  `STREAM.md`; the document remains the contract and the stream carries none of
+  its guarantees.
+
 ### Added
 - Discovery opens another websocket connection when every existing one has
   reached the width the server will honour. Reaching that ceiling used to stop

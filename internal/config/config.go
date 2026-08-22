@@ -241,6 +241,16 @@ type Config struct {
 	// the run is still going rather than only after it exits.
 	LogFile string
 
+	// StreamPath appends the run's changes to a file as they happen, one JSON
+	// object per line. Empty disables it.
+	//
+	// A second view of the same facts, never a replacement for the document:
+	// the document is written atomically and carries the guarantees, while this
+	// is allowed to stop mid-record if the process is killed. It exists because
+	// the document is complete but arrives at the end, which is no use to
+	// anything deciding what to do during the window.
+	StreamPath string
+
 	// ConfigPath is the settings file this configuration was loaded from, or
 	// empty when none was used. It is recorded so a log says where a run's
 	// settings came from.
@@ -378,6 +388,7 @@ func (c Config) LogValue() slog.Value {
 		slog.String("rest_url", c.RESTURL),
 		slog.String("log_level", c.LogLevel),
 		slog.String("log_file", c.LogFile),
+		slog.String("stream_file", c.StreamPath),
 
 		slog.String("mode", c.Mode),
 		slog.String("config_file", c.ConfigPath),
