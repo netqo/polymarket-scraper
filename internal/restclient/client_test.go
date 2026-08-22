@@ -354,14 +354,14 @@ func TestBackoffPrefersTheServersOwnInstruction(t *testing.T) {
 // A cooperative client waits, but not past the point where waiting costs more
 // than the data is worth: the run has a deadline of its own.
 func TestRetryAfterIsCapped(t *testing.T) {
-	const cap = 10 * time.Second
-	client := tunedClient(t, 250*time.Millisecond, 4*time.Second, cap)
+	const ceiling = 10 * time.Second
+	client := tunedClient(t, 250*time.Millisecond, 4*time.Second, ceiling)
 
 	response := &http.Response{Header: http.Header{}}
 	response.Header.Set("Retry-After", "3600")
 
-	if got := client.retryAfter(response); got != cap {
-		t.Errorf("retryAfter = %v, want it capped at %v", got, cap)
+	if got := client.retryAfter(response); got != ceiling {
+		t.Errorf("retryAfter = %v, want it capped at %v", got, ceiling)
 	}
 }
 
