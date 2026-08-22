@@ -4,6 +4,9 @@ result-*
 .env
 .env.*
 !.env.example
+
+# A run's own settings are local. The committed example is what is shared.
+polymarket-scraper.toml
 node_modules/
 target/
 dist/

@@ -5,6 +5,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/netqo/polymarket-scraper/internal/config"
 )
 
 func TestErrorSinkKeepsMessagesInOrder(t *testing.T) {
@@ -35,13 +37,13 @@ func TestErrorSinkOnAQuietRunIsEmptyNotNil(t *testing.T) {
 func TestErrorSinkCapsTheListAndSaysSo(t *testing.T) {
 	var sink errorSink
 
-	for i := range maxErrors + 25 {
+	for i := range config.DefaultMaxErrors + 25 {
 		sink.Addf("failure %d", i)
 	}
 
 	got := sink.Messages()
-	if len(got) != maxErrors+1 {
-		t.Fatalf("got %d messages, want the cap of %d plus the accounting line", len(got), maxErrors)
+	if len(got) != config.DefaultMaxErrors+1 {
+		t.Fatalf("got %d messages, want the cap of %d plus the accounting line", len(got), config.DefaultMaxErrors)
 	}
 	if !strings.Contains(got[len(got)-1], "25 further distinct messages were suppressed") {
 		t.Errorf("last message = %q, want it to account for what was dropped", got[len(got)-1])
@@ -135,12 +137,12 @@ func TestErrorSinkIsSafeUnderConcurrentUse(t *testing.T) {
 func TestErrorSinkShortensAnEnormousMessage(t *testing.T) {
 	var sink errorSink
 
-	const size = maxErrorLength * 20
+	const size = config.DefaultMaxErrorLength * 20
 	sink.Addf("a frame could not be decoded: %s", strings.Repeat("x", size))
 
 	got := sink.Messages()[0]
-	if len(got) > maxErrorLength+64 {
-		t.Errorf("message is %d bytes, want it bounded near %d", len(got), maxErrorLength)
+	if len(got) > config.DefaultMaxErrorLength+64 {
+		t.Errorf("message is %d bytes, want it bounded near %d", len(got), config.DefaultMaxErrorLength)
 	}
 	if !strings.Contains(got, "in full in the log") {
 		t.Errorf("message = %q..., want it to point at where the rest is", got[:80])

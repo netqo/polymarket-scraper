@@ -8,13 +8,14 @@ import (
 	"github.com/netqo/polymarket-scraper/internal/wire"
 )
 
-// maxEvents caps each announcement list.
+// The cap on each announcement list is a setting rather than a constant: see
+// config.DefaultMaxEvents and limits.max_events.
 //
-// The announcement feed is global rather than filtered to this run's
-// subscription, so its volume has nothing to do with how many tokens were
-// asked for. On a busy day the short-duration crypto markets alone announce
-// several per minute, and a long window would accumulate them without bound.
-const maxEvents = 500
+// It exists because the announcement feed is global rather than filtered to
+// this run's subscription, so its volume has nothing to do with how many tokens
+// were asked for. On a busy day the short-duration crypto markets alone
+// announce several per minute, and a long window would accumulate them without
+// bound.
 
 // eventLog collects the announcements seen during a window.
 //
@@ -30,6 +31,9 @@ const maxEvents = 500
 type eventLog struct {
 	mu sync.Mutex
 
+	// limit is how many entries each list keeps.
+	limit int
+
 	newMarkets []report.NewMarket
 	resolved   []report.Resolved
 
@@ -39,8 +43,9 @@ type eventLog struct {
 	suppressed int
 }
 
-func newEventLog() *eventLog {
+func newEventLog(limit int) *eventLog {
 	return &eventLog{
+		limit:        limit,
 		seenNew:      make(map[string]bool),
 		seenResolved: make(map[string]bool),
 	}
@@ -61,7 +66,7 @@ func (l *eventLog) noteNewMarket(event wire.NewMarket, at time.Time) bool {
 	if l.seenNew[key] {
 		return false
 	}
-	if len(l.newMarkets) >= maxEvents {
+	if len(l.newMarkets) >= l.limit {
 		l.suppressed++
 		// The announcement is not recorded, but it is still the first sighting,
 		// and dropping it from the list is no reason to stop collecting the
@@ -92,7 +97,7 @@ func (l *eventLog) noteResolved(event wire.MarketResolved, at time.Time) {
 	if l.seenResolved[key] {
 		return
 	}
-	if len(l.resolved) >= maxEvents {
+	if len(l.resolved) >= l.limit {
 		l.suppressed++
 		return
 	}
