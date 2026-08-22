@@ -70,9 +70,10 @@ type Tracker struct {
 	updatesApplied int
 	lastTrade      *LastTrade
 
-	seededFromREST bool
-	sawAnyMessage  bool
-	sawDelta       bool
+	// source records where the reported book came from, set when it is seeded
+	// rather than derived afterwards from a flag and the run's mode. The two
+	// spellings of the same fact were free to disagree; this one cannot.
+	source Source
 
 	lastAppliedMillis int64
 	haveLastMillis    bool
@@ -108,8 +109,6 @@ func (t *Tracker) State() State { return t.state }
 // A snapshot always restores trust: it is a complete picture, so whatever was
 // missed before it no longer matters.
 func (t *Tracker) ApplySnapshot(snapshot wire.Book, at time.Time) Effect {
-	t.sawAnyMessage = true
-
 	if !t.opts.RESTOnly && !t.state.trusted() && t.state != StatePending {
 		t.flag(FlagDeltaGapResynced)
 	}
@@ -125,7 +124,7 @@ func (t *Tracker) ApplySnapshot(snapshot wire.Book, at time.Time) Effect {
 		t.tickSize = snapshot.TickSize
 	}
 
-	t.seededFromREST = false
+	t.source = SourceWS
 	t.state = StateLive
 	t.noteFreshness(snapshot.Timestamp, at)
 	t.window.sample(&t.book, at)
@@ -142,8 +141,6 @@ func (t *Tracker) ApplySnapshot(snapshot wire.Book, at time.Time) Effect {
 // trusted: overwriting a live book with a separately fetched one would replace
 // current data with data of unknown relative age for no benefit.
 func (t *Tracker) ApplyRESTBook(fetched wire.RESTBook, at time.Time) Effect {
-	t.sawAnyMessage = true
-
 	if fetched.Market != "" {
 		t.conditionID = fetched.Market
 	}
@@ -169,7 +166,12 @@ func (t *Tracker) ApplyRESTBook(fetched wire.RESTBook, at time.Time) Effect {
 	t.book.Replace(book.Asks, fetched.Asks)
 	t.notePriceParsing(fetched.Bids, fetched.Asks)
 
-	t.seededFromREST = true
+	// A rest-only run has no websocket to attribute anything to; every other
+	// run reaching here is recovering a token the websocket could not.
+	t.source = SourceWSResync
+	if t.opts.RESTOnly {
+		t.source = SourceRESTOnly
+	}
 	t.state = StateLive
 	t.noteFreshness(fetched.Timestamp, at)
 	t.window.sample(&t.book, at)
@@ -186,8 +188,6 @@ func (t *Tracker) ApplyRESTBook(fetched wire.RESTBook, at time.Time) Effect {
 // discarded for the same reason, since the base it would build on is the one
 // already in doubt.
 func (t *Tracker) ApplyChange(entry wire.PriceChangeEntry, timestamp string, at time.Time) Effect {
-	t.sawAnyMessage = true
-
 	if t.state == StatePending {
 		t.flag(FlagPreSnapshotDeltaDropped)
 		return EffectNone
@@ -217,7 +217,6 @@ func (t *Tracker) ApplyChange(entry wire.PriceChangeEntry, timestamp string, at 
 
 	t.lastDeltaHash = entry.Hash
 	t.updatesApplied++
-	t.sawDelta = true
 	t.window.updates++
 
 	t.noteFreshness(timestamp, at)
@@ -256,8 +255,6 @@ func (t *Tracker) checkOrdering(timestamp string) (Effect, bool) {
 // live and we are not, so it is treated as a reason to fetch the book rather
 // than to keep waiting.
 func (t *Tracker) ApplyTickSize(change wire.TickSizeChange, _ time.Time) Effect {
-	t.sawAnyMessage = true
-
 	if !change.NewTickSize.Absent() {
 		t.tickSize = change.NewTickSize
 	}
@@ -285,8 +282,6 @@ func (t *Tracker) ApplyTickSize(change wire.TickSizeChange, _ time.Time) Effect 
 // message. By default a disagreement raises a flag and nothing more;
 // StrictBestBidAsk promotes it to a full re-seed.
 func (t *Tracker) ApplyBestBidAsk(quote wire.BestBidAsk, _ time.Time) Effect {
-	t.sawAnyMessage = true
-
 	if !t.state.trusted() {
 		return EffectNone
 	}
@@ -323,8 +318,6 @@ func (t *Tracker) sideAgrees(side book.Side, quoted decimal.Dec) bool {
 
 // ApplyTrade records the most recent fill.
 func (t *Tracker) ApplyTrade(trade wire.LastTrade, _ time.Time) Effect {
-	t.sawAnyMessage = true
-
 	if trade.Market != "" {
 		t.conditionID = trade.Market
 	}
@@ -438,7 +431,7 @@ func (t *Tracker) Finalize(at time.Time) Snapshot {
 	snapshot := Snapshot{
 		TokenID:      t.tokenID,
 		Status:       status,
-		Source:       t.source(status),
+		Source:       t.attribution(status),
 		ConditionID:  t.conditionID,
 		Bids:         []book.Level{},
 		Asks:         []book.Level{},
@@ -459,7 +452,7 @@ func (t *Tracker) Finalize(at time.Time) Snapshot {
 		if t.book.Crossed() {
 			t.flag(FlagCrossedBook)
 		}
-		if !t.sawDelta {
+		if t.updatesApplied == 0 {
 			t.flag(FlagSnapshotOnly)
 		}
 	}
@@ -490,19 +483,12 @@ func (t *Tracker) status() Status {
 
 // source describes where a trusted book came from, and says nothing when there
 // is no trusted book to describe.
-func (t *Tracker) source(status Status) Source {
+func (t *Tracker) attribution(status Status) Source {
 	if status != StatusOK {
 		return SourceNone
 	}
 
-	switch {
-	case t.opts.RESTOnly:
-		return SourceRESTOnly
-	case t.seededFromREST:
-		return SourceWSResync
-	default:
-		return SourceWS
-	}
+	return t.source
 }
 
 // noteFreshness records both clocks for the most recent update: the feed's own

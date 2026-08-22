@@ -84,10 +84,6 @@ type shardState struct {
 	// trackers is read and written only by the apply goroutine.
 	trackers map[string]*tracker.Tracker
 
-	// closedToDiscovery records that the shard has stopped accepting announced
-	// tokens. It belongs to the apply goroutine alone.
-	closedToDiscovery bool
-
 	// subscription is assetIDs plus every token discovery has taken on, and it
 	// is what a redial subscribes to. It is replaced rather than mutated,
 	// because the apply goroutine extends it while the shard's own goroutine

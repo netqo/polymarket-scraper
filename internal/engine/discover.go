@@ -238,19 +238,6 @@ func (e *Engine) discoveredTrackerOptions() tracker.Options {
 	return opts
 }
 
-// closeDiscovery stops a shard taking on new tokens.
-//
-// It runs at the sweep, near the end of the window. A token subscribed in the
-// last seconds would produce a book with almost no history behind it and no
-// time to recover if anything went wrong, which is worse than not having it:
-// the consumer would have to distinguish it from a fully observed one, and
-// nothing in the document would help.
-//
-// The engine-wide flag is what actually stops discovery, since an announcement
-// can now be placed on a connection other than the one that saw it. This stays
-// so that a shard's own state still says so.
-func (s *shardState) closeDiscovery() { s.closedToDiscovery = true }
-
 // splitDiscovered separates the requested tokens from the picked-up ones.
 //
 // The requested list is what the document's completeness guarantee is measured
