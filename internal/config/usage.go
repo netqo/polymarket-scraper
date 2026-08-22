@@ -26,6 +26,22 @@ fees or scores. Judgement belongs to whatever reads the output.
 USAGE
   %[1]s --tokens FILE --out FILE [--duration SECONDS] [options]
 
+SETTINGS FILE
+  --config FILE     Read settings from a TOML file. Without this, %[16]s
+                    in the working directory is used if it exists. A file named
+                    explicitly, here or in %[17]s, must exist.
+  --mode MODE       %[18]s or %[19]s. A bundle of defaults rather than a
+                    setting of its own: %[19]s drops the log level to debug and
+                    stops truncating values on the terminal. Also read from
+                    %[20]s. Default %[18]s.
+
+  Sources override each other in this order, each beating the one before it:
+  defaults, the mode's bundle, the settings file, the environment, then flags.
+
+  Tuning that has no flag lives in the file alone: retry counts and timeouts,
+  backoffs, worker counts, buffer and list limits. Run --help is not the place
+  to discover those; the commented example file is.
+
 REQUIRED
   --tokens FILE     Token ids to collect: one per line, or a JSON array of
                     strings. Blank lines and lines starting with '#' are
@@ -135,6 +151,11 @@ func Usage() string {
 		DefaultRESTURL,
 		defaultLogLevel,
 		MaxAssetsCeiling,
+		DefaultConfigName,
+		EnvConfig,
+		ModeProduction,
+		ModeDebug,
+		EnvMode,
 	)
 }
 

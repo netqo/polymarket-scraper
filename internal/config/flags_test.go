@@ -101,27 +101,52 @@ func TestParseOverridesEveryDefault(t *testing.T) {
 		t.Fatalf("Parse returned error: %v", err)
 	}
 
-	want := Config{
-		TokensPath:             "tokens.txt",
-		OutPath:                "books.json",
-		Duration:               5 * time.Second,
-		Grace:                  3 * time.Second,
-		RESTOnly:               true,
-		RESTRate:               2.5,
-		RESTBatchSize:          50,
-		MaxAssetsPerConnection: 100,
-		PingInterval:           time.Second,
-		IdleTimeout:            4 * time.Second,
-		ReorderTolerance:       0,
-		StrictBestBidAsk:       true,
-		DiscoverLimit:          0,
-		WSURL:                  "ws://127.0.0.1:1/ws",
-		RESTURL:                "http://127.0.0.1:2",
-		LogLevel:               "debug",
-		LogFile:                "run.log",
-	}
+	// Built from the defaults rather than spelled out in full, so that adding a
+	// setting with no flag does not break a test about flags.
+	want := New()
+	want.TokensPath = "tokens.txt"
+	want.OutPath = "books.json"
+	want.Duration = 5 * time.Second
+	want.Grace = 3 * time.Second
+	want.RESTOnly = true
+	want.RESTRate = 2.5
+	want.RESTBatchSize = 50
+	want.MaxAssetsPerConnection = 100
+	want.PingInterval = time.Second
+	want.IdleTimeout = 4 * time.Second
+	want.ReorderTolerance = 0
+	want.StrictBestBidAsk = true
+	want.DiscoverLimit = 0
+	want.WSURL = "ws://127.0.0.1:1/ws"
+	want.RESTURL = "http://127.0.0.1:2"
+	want.LogLevel = "debug"
+	want.LogFile = "run.log"
+
 	if got != want {
 		t.Errorf("Parse() =\n %+v\nwant\n %+v", got, want)
+	}
+}
+
+// Every flag the binary binds has to be reachable, or it is documented,
+// validated and dead. Checking the count here is what catches a flag added to
+// newFlagSet and then never exercised.
+func TestEveryBoundFlagIsOverriddenByATest(t *testing.T) {
+	// --version and --config are exercised by their own tests; everything else
+	// is covered by TestParseOverridesEveryDefault above.
+	covered := map[string]bool{
+		"version": true, "config": true, "mode": true,
+		"tokens": true, "out": true, "duration": true, "grace": true,
+		"rest-only": true, "rest-rate": true, "rest-batch-size": true,
+		"max-assets-per-connection": true, "ping-interval": true,
+		"idle-timeout": true, "reorder-tolerance": true,
+		"strict-best-bid-ask": true, "discover-limit": true,
+		"ws-url": true, "rest-url": true, "log-level": true, "log-file": true,
+	}
+
+	for _, name := range boundFlags() {
+		if !covered[name] {
+			t.Errorf("flag --%s is bound but no test overrides it", name)
+		}
 	}
 }
 

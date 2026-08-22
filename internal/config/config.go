@@ -48,6 +48,79 @@ const (
 	maxRESTBatchSize = 500
 )
 
+// REST client defaults.
+//
+// These were constants inside the restclient package until the configuration
+// was consolidated. They are tuning rather than policy, so they have no flags:
+// changing one is a deliberate act that belongs in a file next to the others,
+// not something to be typed on a command line by mistake.
+const (
+	// DefaultRESTAttempts is how many times a request is tried before giving
+	// up. Three is enough to ride out a transient failure and few enough that a
+	// failing token cannot eat the run's deadline.
+	DefaultRESTAttempts = 3
+
+	// DefaultRESTTimeout bounds a single request, so a connection that accepts
+	// and then says nothing cannot stall the run on its own.
+	DefaultRESTTimeout = 10 * time.Second
+
+	// DefaultRESTInitialBackoff and DefaultRESTMaxBackoff bound the wait
+	// between attempts.
+	DefaultRESTInitialBackoff = 250 * time.Millisecond
+	DefaultRESTMaxBackoff     = 4 * time.Second
+
+	// DefaultRESTMaxRetryAfter caps how long a server-supplied Retry-After is
+	// honoured. A cooperative client should wait, but not past the point where
+	// waiting costs more than the data is worth.
+	DefaultRESTMaxRetryAfter = 10 * time.Second
+
+	// DefaultResyncWorkers is how many re-seed workers run. They share one rate
+	// limiter, so this is not a throughput setting: it is how many requests can
+	// be in flight while others wait on the limiter, which keeps a slow
+	// response from idling the whole budget.
+	DefaultResyncWorkers = 4
+)
+
+// Reconnection defaults.
+//
+// There is no jitter and no setting for one: this is a single process and its
+// requests are already paced, so jitter would add randomness to a program that
+// otherwise has none.
+const (
+	DefaultReconnectInitialBackoff = time.Second
+	DefaultReconnectMaxBackoff     = 8 * time.Second
+)
+
+// Bounds on what the scraper will hold in memory or write out.
+const (
+	// DefaultMaxErrors caps how many distinct messages the run's error list
+	// holds. Repeats are collapsed, so a connection redialling in a loop costs
+	// one entry however long it runs.
+	DefaultMaxErrors = 500
+
+	// DefaultMaxEvents caps each announcement list. The announcement feed is
+	// global rather than filtered to this run's subscription, so its volume has
+	// nothing to do with how many tokens were asked for.
+	DefaultMaxEvents = 500
+
+	// DefaultReadLimit bounds a single websocket frame. The initial snapshot
+	// for a full shard is the largest thing the server sends and it grows with
+	// the number of assets, so this is far above the library's own default.
+	DefaultReadLimit = 32 << 20
+
+	// DefaultMaxErrorLength bounds one message in the output document's error
+	// list. A decode failure quotes the frame it could not read, and a frame
+	// can be kilobytes; these strings are meant to be read and quoted verbatim,
+	// so one running to several pages would make the whole list useless.
+	DefaultMaxErrorLength = 500
+
+	// DefaultConsoleValueLimit is how much of one attribute value reaches the
+	// terminal. About two lines: long enough for a file path or the start of a
+	// frame, short enough that one enormous value cannot scroll the rest of the
+	// run out of view. The log file applies no limit.
+	DefaultConsoleValueLimit = 300
+)
+
 // Websocket defaults.
 const (
 	// DefaultMaxAssetsPerConnection stays well below the point where the server
@@ -145,6 +218,50 @@ type Config struct {
 	// The file is appended to and flushed per line, so it can be tailed while
 	// the run is still going rather than only after it exits.
 	LogFile string
+
+	// ConfigPath is the settings file this configuration was loaded from, or
+	// empty when none was used. It is recorded so a log says where a run's
+	// settings came from.
+	ConfigPath string
+
+	// Mode selects a bundle of defaults. See the Mode constants.
+	Mode string
+
+	// Tuning below. None of these has a command line flag, deliberately.
+	//
+	// They were constants scattered through the engine and the clients, and
+	// consolidating them here is what lets them be changed without rebuilding.
+	// Keeping them off the command line is what stops --help from growing to
+	// thirty entries and burying the dozen settings anyone actually sets.
+
+	// ReconnectInitialBackoff and ReconnectMaxBackoff bound the wait between
+	// redial attempts on a dropped connection.
+	ReconnectInitialBackoff time.Duration
+	ReconnectMaxBackoff     time.Duration
+
+	// RESTAttempts is how many times one REST request is tried.
+	RESTAttempts int
+	// RESTTimeout bounds a single REST attempt.
+	RESTTimeout time.Duration
+	// RESTInitialBackoff and RESTMaxBackoff bound the wait between attempts.
+	RESTInitialBackoff time.Duration
+	RESTMaxBackoff     time.Duration
+	// RESTMaxRetryAfter caps how long a server-supplied Retry-After is obeyed.
+	RESTMaxRetryAfter time.Duration
+	// ResyncWorkers is how many re-seed workers run concurrently.
+	ResyncWorkers int
+
+	// ReadLimit bounds a single websocket frame, in bytes.
+	ReadLimit int64
+
+	// MaxErrors and MaxEvents bound the output document's lists.
+	MaxErrors int
+	MaxEvents int
+
+	// MaxErrorLength bounds one message in the output document's error list.
+	MaxErrorLength int
+	// ConsoleValueLimit is how much of one attribute value reaches the terminal.
+	ConsoleValueLimit int
 }
 
 // New returns a Config with every default applied and nothing else set.
@@ -162,6 +279,25 @@ func New() Config {
 		WSURL:                  DefaultWSURL,
 		RESTURL:                DefaultRESTURL,
 		LogLevel:               defaultLogLevel,
+		Mode:                   ModeProduction,
+
+		ReconnectInitialBackoff: DefaultReconnectInitialBackoff,
+		ReconnectMaxBackoff:     DefaultReconnectMaxBackoff,
+
+		RESTAttempts:       DefaultRESTAttempts,
+		RESTTimeout:        DefaultRESTTimeout,
+		RESTInitialBackoff: DefaultRESTInitialBackoff,
+		RESTMaxBackoff:     DefaultRESTMaxBackoff,
+		RESTMaxRetryAfter:  DefaultRESTMaxRetryAfter,
+		ResyncWorkers:      DefaultResyncWorkers,
+
+		ReadLimit: DefaultReadLimit,
+
+		MaxErrors: DefaultMaxErrors,
+		MaxEvents: DefaultMaxEvents,
+
+		MaxErrorLength:    DefaultMaxErrorLength,
+		ConsoleValueLimit: DefaultConsoleValueLimit,
 	}
 }
 
@@ -196,6 +332,23 @@ func (c Config) LogValue() slog.Value {
 		slog.String("rest_url", c.RESTURL),
 		slog.String("log_level", c.LogLevel),
 		slog.String("log_file", c.LogFile),
+
+		slog.String("mode", c.Mode),
+		slog.String("config_file", c.ConfigPath),
+
+		slog.Duration("reconnect_initial_backoff", c.ReconnectInitialBackoff),
+		slog.Duration("reconnect_max_backoff", c.ReconnectMaxBackoff),
+		slog.Int("rest_attempts", c.RESTAttempts),
+		slog.Duration("rest_timeout", c.RESTTimeout),
+		slog.Duration("rest_initial_backoff", c.RESTInitialBackoff),
+		slog.Duration("rest_max_backoff", c.RESTMaxBackoff),
+		slog.Duration("rest_max_retry_after", c.RESTMaxRetryAfter),
+		slog.Int("resync_workers", c.ResyncWorkers),
+		slog.Int64("read_limit", c.ReadLimit),
+		slog.Int("max_errors", c.MaxErrors),
+		slog.Int("max_events", c.MaxEvents),
+		slog.Int("max_error_length", c.MaxErrorLength),
+		slog.Int("console_value_limit", c.ConsoleValueLimit),
 	)
 }
 
@@ -247,8 +400,84 @@ func (c Config) Validate() error {
 	if err := validateURL("--ws-url", c.WSURL, "ws", "wss"); err != nil {
 		return err
 	}
+	if err := validateURL("--rest-url", c.RESTURL, "http", "https"); err != nil {
+		return err
+	}
+	if err := validateMode(c.Mode); err != nil {
+		return err
+	}
 
-	return validateURL("--rest-url", c.RESTURL, "http", "https")
+	return c.validateTuning()
+}
+
+// validateTuning checks the settings that have no flag of their own.
+//
+// They are separated because their messages have to read differently: nobody
+// mistypes these on a command line, so the message names the file's own
+// spelling rather than a flag, and says what the value would break.
+func (c Config) validateTuning() error {
+	positive := []struct {
+		setting string
+		value   int64
+	}{
+		{"rest.attempts", int64(c.RESTAttempts)},
+		{"rest.resync_workers", int64(c.ResyncWorkers)},
+		{"websocket.read_limit", c.ReadLimit},
+		{"limits.max_errors", int64(c.MaxErrors)},
+	}
+	for _, check := range positive {
+		if check.value < 1 {
+			return fmt.Errorf("%s must be at least 1, got %d", check.setting, check.value)
+		}
+	}
+
+	nonNegative := []struct {
+		setting string
+		value   int
+	}{
+		{"limits.max_events", c.MaxEvents},
+		{"limits.max_error_length", c.MaxErrorLength},
+		{"logging.console_value_limit", c.ConsoleValueLimit},
+	}
+	for _, check := range nonNegative {
+		if check.value < 0 {
+			return fmt.Errorf("%s must not be negative, got %d: use 0 for no limit", check.setting, check.value)
+		}
+	}
+
+	if c.RESTTimeout <= 0 {
+		return fmt.Errorf("rest.timeout must be positive, got %v: a request with no bound can stall the whole run", c.RESTTimeout)
+	}
+	if c.RESTMaxRetryAfter < 0 {
+		return fmt.Errorf("rest.max_retry_after must not be negative, got %v", c.RESTMaxRetryAfter)
+	}
+
+	if err := validateBackoff(
+		"rest.initial_backoff", c.RESTInitialBackoff,
+		"rest.max_backoff", c.RESTMaxBackoff,
+	); err != nil {
+		return err
+	}
+
+	return validateBackoff(
+		"websocket.reconnect_initial_backoff", c.ReconnectInitialBackoff,
+		"websocket.reconnect_max_backoff", c.ReconnectMaxBackoff,
+	)
+}
+
+// validateBackoff checks a backoff pair, which is only meaningful when the
+// ceiling is at or above the floor. The settings are named in full rather than
+// built from a prefix, so the message quotes exactly what the file has to say.
+func validateBackoff(initialName string, initial time.Duration, maxName string, maximum time.Duration) error {
+	if initial <= 0 {
+		return fmt.Errorf("%s must be positive, got %v", initialName, initial)
+	}
+	if maximum < initial {
+		return fmt.Errorf("%s (%v) must be at least %s (%v), or the ceiling would shorten the first wait",
+			maxName, maximum, initialName, initial)
+	}
+
+	return nil
 }
 
 // validateURL checks that raw is an absolute URL with one of the allowed

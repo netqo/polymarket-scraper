@@ -9,6 +9,19 @@ import (
 	"time"
 )
 
+// Environment variables the scraper reads.
+const (
+	// EnvLogLevel sets the minimum severity, as --log-level does.
+	EnvLogLevel = "LOG_LEVEL"
+
+	// EnvConfig names a settings file, as --config does. A file named this way
+	// must exist; being unable to read it is an error rather than a fallback.
+	EnvConfig = "POLYMARKET_CONFIG"
+
+	// EnvMode selects a bundle of defaults, as --mode does.
+	EnvMode = "POLYMARKET_MODE"
+)
+
 // Sentinel results from Parse that are not failures.
 //
 // They are returned as errors because that is how the flag package reports
@@ -23,32 +36,64 @@ var (
 
 // Parse turns command line arguments into a validated Config.
 //
-// Defaults come from New, then the environment supplies the log level, then
-// flags override both. The flag package's own usage output is suppressed: the
-// hand-written text in usage.go is what an operator and a consuming agent read,
-// and having two sources for it would guarantee they eventually disagree.
+// Four sources contribute, each overriding the one before it:
+//
+//	defaults        New()
+//	mode            the bundle --mode implies
+//	settings file   --config, POLYMARKET_CONFIG, or ./polymarket-scraper.toml
+//	environment     LOG_LEVEL
+//	flags           everything on the command line
+//
+// The order is the conventional one, and the reason it is worth stating is that
+// the file exists to be edited by an agent while the flags stay whatever a shell
+// script pinned months ago. The more specific instruction, typed at the moment
+// of the run, is the one that wins.
+//
+// The flag package's own usage output is suppressed: the hand-written text in
+// usage.go is what an operator and a consuming agent read, and having two
+// sources for it would guarantee they eventually disagree.
 func Parse(args []string, lookupEnv func(string) (string, bool)) (Config, error) {
-	cfg := New()
-	if level, ok := lookupEnv("LOG_LEVEL"); ok && level != "" {
-		cfg.LogLevel = level
-	}
-
-	var showVersion bool
-	fs := newFlagSet(&cfg, &showVersion)
-
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return Config{}, ErrHelp
-		}
+	// A first pass over a throwaway configuration, purely to learn the two
+	// things the rest of the load depends on: which settings file to read, and
+	// which mode's defaults to start from. Both can also come from the file or
+	// the environment, so neither can be resolved by the main pass, which has
+	// to run last.
+	probe, probeSet, err := probeFlags(args)
+	if err != nil {
 		return Config{}, err
 	}
 
+	path, loaded, err := readSettings(probe.ConfigPath, lookupEnv)
+	if err != nil {
+		return Config{}, err
+	}
+
+	mode := resolveMode(probe, probeSet, loaded, lookupEnv)
+	if err := validateMode(mode); err != nil {
+		return Config{}, err
+	}
+
+	cfg := New()
+	cfg.applyMode(mode)
+	loaded.apply(&cfg)
+	applyEnv(&cfg, lookupEnv)
+
+	var showVersion bool
+	fs := newFlagSet(&cfg, &showVersion)
+	if err := fs.Parse(args); err != nil {
+		return Config{}, translateFlagError(err)
+	}
 	if showVersion {
 		return Config{}, ErrVersion
 	}
 	if rest := fs.Args(); len(rest) > 0 {
 		return Config{}, fmt.Errorf("unexpected argument %q: every input is a flag", rest[0])
 	}
+
+	// Recorded rather than parsed from, so that a log and the run's own summary
+	// can say where the settings came from.
+	cfg.ConfigPath = path
+	cfg.Mode = mode
 
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -57,18 +102,98 @@ func Parse(args []string, lookupEnv func(string) (string, bool)) (Config, error)
 	return cfg, nil
 }
 
+// probeFlags runs the first pass, reporting the parsed configuration and which
+// flag names were given explicitly.
+func probeFlags(args []string) (Config, map[string]bool, error) {
+	probe := New()
+
+	var showVersion bool
+	fs := newFlagSet(&probe, &showVersion)
+	if err := fs.Parse(args); err != nil {
+		return Config{}, nil, translateFlagError(err)
+	}
+	if showVersion {
+		return Config{}, nil, ErrVersion
+	}
+
+	// Visit reports only the flags actually present on the command line, which
+	// is the difference between "--mode production" and not saying anything.
+	given := make(map[string]bool)
+	fs.Visit(func(f *flag.Flag) { given[f.Name] = true })
+
+	return probe, given, nil
+}
+
+// readSettings loads the settings file, if there is one to load.
+func readSettings(explicit string, lookupEnv func(string) (string, bool)) (string, *file, error) {
+	path, required := resolveConfigPath(explicit, lookupEnv)
+	if path == "" {
+		return "", nil, nil
+	}
+
+	loaded, err := loadFile(path)
+	if err != nil {
+		if missingIsFatal(err, required) {
+			return "", nil, err
+		}
+
+		// The default file simply was not there, which is the normal case.
+		return "", nil, nil
+	}
+
+	return path, loaded, nil
+}
+
+// resolveMode picks the mode from the most specific source that named one.
+func resolveMode(probe Config, given map[string]bool, loaded *file, lookupEnv func(string) (string, bool)) string {
+	if given["mode"] {
+		return probe.Mode
+	}
+	if fromEnv, ok := lookupEnv(EnvMode); ok && fromEnv != "" {
+		return fromEnv
+	}
+	if loaded != nil && loaded.Mode != nil {
+		return *loaded.Mode
+	}
+
+	return ModeProduction
+}
+
+// applyEnv layers the environment over the file.
+func applyEnv(cfg *Config, lookupEnv func(string) (string, bool)) {
+	if level, ok := lookupEnv(EnvLogLevel); ok && level != "" {
+		cfg.LogLevel = level
+	}
+}
+
+// translateFlagError maps the flag package's help sentinel onto ours.
+func translateFlagError(err error) error {
+	if errors.Is(err, flag.ErrHelp) {
+		return ErrHelp
+	}
+
+	return err
+}
+
 // newFlagSet binds every flag to cfg.
 //
 // It is separate from Parse so a test can walk the bound flags and check them
 // against the hand-written help text in both directions. That is what keeps
 // requirement F1's "--help is accurate and complete" true as flags are added,
 // rather than true only on the day it was written.
+//
+// Not every setting has a flag. The tuning values consolidated out of the
+// engine and the clients are reachable from the settings file alone, because a
+// command line with thirty entries buries the dozen anyone actually sets.
 func newFlagSet(cfg *Config, showVersion *bool) *flag.FlagSet {
 	fs := flag.NewFlagSet(programName, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	fs.Usage = func() {}
 
 	fs.BoolVar(showVersion, "version", false, "")
+
+	fs.StringVar(&cfg.ConfigPath, "config", cfg.ConfigPath, "")
+	fs.StringVar(&cfg.Mode, "mode", cfg.Mode, "")
 
 	fs.StringVar(&cfg.TokensPath, "tokens", cfg.TokensPath, "")
 	fs.StringVar(&cfg.OutPath, "out", cfg.OutPath, "")
@@ -99,7 +224,8 @@ func newFlagSet(cfg *Config, showVersion *bool) *flag.FlagSet {
 // Requirement A2 specifies the scan duration in seconds, and a consuming agent
 // fills in the invocation once and never revisits it, so "--duration 90" has to
 // mean ninety seconds. Anything that is not a bare number falls through to Go's
-// duration syntax, so "--duration 1m30s" also works for a human.
+// duration syntax, so "--duration 1m30s" also works for a human. The settings
+// file accepts both spellings through the same parser.
 type seconds struct{ target *time.Duration }
 
 func (s seconds) String() string {
@@ -111,14 +237,9 @@ func (s seconds) String() string {
 }
 
 func (s seconds) Set(raw string) error {
-	if value, err := strconv.ParseFloat(raw, 64); err == nil {
-		*s.target = time.Duration(value * float64(time.Second))
-		return nil
-	}
-
-	parsed, err := time.ParseDuration(raw)
+	parsed, err := parseDuration(raw)
 	if err != nil {
-		return fmt.Errorf("expected a number of seconds or a duration such as 1m30s, got %q", raw)
+		return err
 	}
 	*s.target = parsed
 

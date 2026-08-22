@@ -1,0 +1,188 @@
+# polymarket-scraper settings
+#
+# Copy this to polymarket-scraper.toml and edit. A file with that name in the
+# working directory is picked up automatically; anywhere else, name it with
+# --config FILE or POLYMARKET_CONFIG.
+#
+# Every value below is the default, so a copy of this file with nothing changed
+# behaves exactly like running with no file at all. Delete what you do not need.
+#
+# Five sources contribute, each overriding the one before it:
+#
+#   1. built-in defaults
+#   2. the bundle implied by mode
+#   3. this file
+#   4. the environment (LOG_LEVEL)
+#   5. command line flags
+#
+# So a flag always wins over this file. That is deliberate: the file is the
+# considered configuration, and a flag is what someone typed for one run.
+#
+# An unknown setting is an error, not a warning. A typo that was silently
+# ignored would look exactly like a setting that had no effect, and the run
+# would quietly not do what this file says.
+#
+# Durations accept a bare number of seconds ("90") or Go's duration syntax
+# ("1m30s", "250ms"). Both mean the same thing.
+
+# Bundle of defaults to start from: "production" or "debug".
+#
+# debug drops the log level to debug, which names the token behind every flag,
+# and stops truncating attribute values on the terminal. Also settable with
+# POLYMARKET_MODE or --mode.
+mode = "production"
+
+
+# INPUT AND OUTPUT ------------------------------------------------------------
+#
+# Usually given as --tokens and --out instead, since they change per run.
+
+[input]
+# tokens = "tokens.txt"     # one token id per line, or a JSON array of strings
+# out    = "books.json"     # written atomically; never observed half-written
+
+
+# WINDOW ----------------------------------------------------------------------
+
+[window]
+# How long to collect for.
+duration = "90s"
+
+# Extra time allowed for shutdown after the window closes, after which the
+# process terminates unconditionally. The watchdog behind this is the only hard
+# guarantee that a run ends on time.
+grace = "30s"
+
+
+# WEBSOCKET -------------------------------------------------------------------
+
+[websocket]
+url = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
+
+# How the requested tokens are spread across connections. Maximum 700.
+#
+# Past roughly 750 assets the server accepts a subscription, keeps delivering
+# updates, and silently never sends the initial snapshot. Nothing reports an
+# error, so a client that does not count what it received looks perfectly
+# healthy while holding no book state at all.
+max_assets_per_connection = 400
+
+# Keepalive cadence. The frame is the literal text PING, not a protocol ping.
+ping_interval = "10s"
+
+# Silence tolerated before a connection is treated as dead. Must exceed
+# ping_interval, or every connection is declared dead before it can answer.
+idle_timeout = "30s"
+
+# How far a timestamp may go backwards before its token is distrusted rather
+# than merely flagged.
+#
+# The feed carries no sequence numbers, only timestamps, so treating every
+# regression as a missed update would turn one server clock quirk into a resync
+# of every token at once.
+reorder_tolerance = "5s"
+
+# Treat a published best quote that disagrees with the maintained book as a gap
+# rather than an anomaly. Off by default: the published quote is not guaranteed
+# to be delivered, so correctness must not depend on it.
+strict_best_bid_ask = false
+
+# Cap on tokens subscribed to mid-window after being announced. 0 disables it.
+# Announcements are reported either way.
+#
+# The announcement feed is global rather than filtered to this run, so without a
+# budget a long run would gradually subscribe to every market on the exchange.
+discover_limit = 100
+
+# Wait between redial attempts on a dropped connection.
+reconnect_initial_backoff = "1s"
+reconnect_max_backoff = "8s"
+
+# Largest single frame accepted, in bytes.
+#
+# The initial snapshot for a full shard arrives as one frame and grows with the
+# number of assets, so a limit set too low drops exactly the message the whole
+# run depends on.
+read_limit = 33554432
+
+
+# REST ------------------------------------------------------------------------
+#
+# REST is not a fallback. The websocket never sends min_order_size or neg_risk,
+# and the output document reports both, so a book is fetched over REST on every
+# run regardless of how well the websocket is working.
+
+[rest]
+url = "https://clob.polymarket.com"
+
+# Skip the websocket entirely and snapshot every token over REST. A debugging
+# aid, and a mirror of the usual fallback path.
+only = false
+
+# Ceiling on requests per second across everything the client does, retries
+# included. Polymarket documents far higher limits, so this is politeness.
+rate = 10.0
+
+# Token ids per batched book request. The endpoint rejects payloads much beyond
+# 500, and the limit is on bytes rather than count, so this leaves room.
+batch_size = 250
+
+# How many times one request is tried before giving up. An unbounded retry is
+# indistinguishable from a hang, and the run has a deadline to meet.
+attempts = 3
+
+# Bounds a single attempt, so a connection that accepts and then says nothing
+# cannot stall the run on its own.
+timeout = "10s"
+
+# Wait between attempts.
+initial_backoff = "250ms"
+max_backoff = "4s"
+
+# Cap on how long a server-supplied Retry-After is honoured. 0 ignores the
+# header entirely.
+max_retry_after = "10s"
+
+# How many re-seed workers run. They share one rate limiter, so this is not a
+# throughput setting: it is how many requests can be in flight while others wait
+# on the limiter, which keeps a slow response from idling the whole budget.
+resync_workers = 4
+
+
+# LOGGING ---------------------------------------------------------------------
+
+[logging]
+# debug, info, warn or error. Also settable with LOG_LEVEL or --log-level.
+level = "info"
+
+# Append every record to this file as the run happens, uncoloured and never
+# truncated, so it can be tailed while the run is still going. Empty disables
+# it. Created if absent, mode 0600.
+file = ""
+
+# How much of one attribute value reaches the terminal. 0 means no limit.
+#
+# A decode failure quotes the frame it could not read, and a frame runs to
+# kilobytes; on a terminal that scrolls everything else away. The log file
+# applies no limit, so nothing is lost by cutting it here.
+console_value_limit = 300
+
+
+# LIMITS ----------------------------------------------------------------------
+#
+# Bounds on the output document. All three announce themselves when they bite,
+# so a truncated list never reads as a complete one.
+
+[limits]
+# How many distinct error messages the document keeps. Repeats are collapsed
+# into one entry with a count, so a connection redialling in a loop costs one
+# entry however long it runs.
+max_errors = 500
+
+# How long one error message may be. Anything longer is cut, with a pointer to
+# the log file where it is kept in full.
+max_error_length = 500
+
+# How many entries each announcement list keeps. The announcement feed is
+# global, so its volume has nothing to do with how many tokens were requested.
+max_events = 500
