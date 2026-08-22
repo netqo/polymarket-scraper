@@ -160,6 +160,20 @@ type NewMarket struct {
 	AssetIDs    []string `json:"assets_ids"`
 	Outcomes    []string `json:"outcomes"`
 	ReceivedAt  string   `json:"received_at"`
+
+	// SportsMarketType is the only categorisation the feed offers, and it is
+	// null for everything that is not a sports market. The scraper reports it
+	// as it arrives and groups nothing itself: which markets belong together is
+	// a judgement, and judgement belongs to whatever reads this.
+	SportsMarketType *string `json:"sports_market_type"`
+
+	// StartsAt is when the underlying event begins, in the exchange's own
+	// spelling and not reformatted. Null when there is no scheduled event.
+	StartsAt *string `json:"starts_at"`
+
+	// MinTickSize is the market's minimum price increment, known from the
+	// announcement itself rather than waiting for a book.
+	MinTickSize decimal.Dec `json:"min_tick_size"`
 }
 
 // Resolved is a market that settled during the window.

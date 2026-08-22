@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its guarantees.
 
 ### Added
+- Announcements now report `sports_market_type`, `starts_at` and `min_tick_size`,
+  in both the output document's `events.new_markets[]` and the change stream.
+  `sports_market_type` is the only categorisation the feed offers and is null for
+  anything that is not a sports market; the short-duration crypto series is
+  identifiable by its structured slug instead. The scraper reports these as they
+  arrive and groups nothing itself.
 - Discovery opens another websocket connection when every existing one has
   reached the width the server will honour. Reaching that ceiling used to stop
   discovery outright, which quietly ended collection of the short-duration

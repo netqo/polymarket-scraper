@@ -219,9 +219,30 @@ that something was wrong.
 | `assets_ids` | array of strings | The outcome tokens. |
 | `outcomes` | array of strings | The outcome names. |
 | `received_at` | string | When the announcement arrived. |
+| `sports_market_type` | string or null | What kind of sports market this is. See below. |
+| `starts_at` | string or null | When the underlying event begins, in the exchange's own spelling. See below. |
+| `min_tick_size` | string or null | The market's minimum price increment, known from the announcement rather than from a book. |
 
 The announcement feed is global rather than filtered to the subscription, so
 this is a discovery feed as much as a status report.
+
+**`sports_market_type` is the only categorisation the feed offers**, and it is
+null for everything that is not a sports market. Observed values include
+`soccer_exact_score`, `first_half_totals` and `kill_over_under_game`. The
+short-duration crypto series carries none; those are identifiable by their slug
+instead, which is structured as `eth-updown-5m-1787458200`.
+
+The scraper reports this as it arrives and groups nothing itself. Which markets
+belong together is a judgement, and judgement belongs to whatever reads this.
+There is also a `tags` field on the wire, which was empty on every announcement
+observed and is therefore not reported; a column of nulls would say nothing.
+
+**`starts_at` is the exchange's own string, verbatim**, and its format matches
+neither of the other two conventions in this document: not epoch milliseconds
+like `exchange_timestamp`, and not ISO-8601 like `received_at`. It looks like
+`2026-08-23 19:00:00+00`. It is passed through unchanged for the same reason
+every other value is, and a consumer that needs it as a real time should parse it
+rather than assume.
 
 ### `events.resolved[]`
 

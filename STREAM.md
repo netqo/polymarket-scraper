@@ -125,7 +125,15 @@ block collects at the end.
 | `outcomes` | array of strings | The outcome names. `market` only. |
 | `winning_asset_id` | string | The token that pays out. `resolved` only. |
 | `winning_outcome` | string | The outcome that won. `resolved` only. |
+| `sports_market_type` | string | What kind of sports market this is. `market` only, and absent for anything that is not a sports market. |
+| `starts_at` | string | When the underlying event begins, in the exchange's own spelling, for example `2026-08-23 19:00:00+00`. `market` only. |
+| `min_tick_size` | string | The market's minimum price increment. `market` only. |
 | `exchange_timestamp` | string | The feed's timestamp. |
+
+`sports_market_type` is the only categorisation the feed offers. The
+short-duration crypto series carries none and is identifiable by its slug
+instead, which is structured as `eth-updown-5m-1787458200`. The scraper groups
+nothing itself; see `SCHEMA.md` for the same note against the document.
 
 ## Example
 

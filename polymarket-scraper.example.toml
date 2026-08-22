@@ -108,8 +108,13 @@ discover_limit = 100
 # rather than about this program, which is why it is a pattern here rather than
 # a list of series names compiled into the binary.
 #
-# To follow only the short-duration crypto series, something like:
-#   discover_match = "(?i)up or down"
+# The slug is the reliable identifier for the short-duration crypto series. It
+# is structured, so following the 5- and 15-minute markets is:
+#   discover_match = "updown-5m|updown-15m"
+#
+# Sports markets instead carry sports_market_type in the announcement, which the
+# output document and the change stream both report, so those can be grouped
+# after the fact rather than filtered here.
 # A mistyped expression is a startup error, not a filter that matches nothing.
 discover_match = ""
 
