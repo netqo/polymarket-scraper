@@ -233,7 +233,7 @@ func (c *Client) do(ctx context.Context, method, endpoint string, body []byte, o
 		switch {
 		case err == nil:
 			return nil
-		case errors.Is(err, ErrNotFound):
+		case errors.Is(err, ErrNotFound), isTerminalErr(err):
 			// The answer will not change; retrying only wastes the budget.
 			return err
 		case ctx.Err() != nil:
@@ -291,8 +291,8 @@ func (c *Client) attempt(ctx context.Context, method, endpoint string, body []by
 	return nil
 }
 
-// checkStatus turns an HTTP status into an error, distinguishing the one status
-// that is a fact rather than a setback.
+// checkStatus turns an HTTP status into an error, distinguishing the ones that
+// are facts from the ones that are setbacks.
 func (c *Client) checkStatus(response *http.Response) error {
 	switch {
 	case response.StatusCode == http.StatusNotFound:
@@ -301,9 +301,38 @@ func (c *Client) checkStatus(response *http.Response) error {
 		return &statusError{
 			Code:       response.StatusCode,
 			RetryAfter: c.retryAfter(response),
+			Terminal:   isTerminal(response.StatusCode),
 		}
 	default:
 		return nil
+	}
+}
+
+// isTerminalErr reports whether an error carries a status that will not change.
+func isTerminalErr(err error) bool {
+	var status *statusError
+
+	return errors.As(err, &status) && status.Terminal
+}
+
+// isTerminal reports whether a status will still be the answer next time.
+//
+// A 4xx other than the two below is the server saying the request itself is
+// wrong: a malformed token id, a payload past the size limit, a path that does
+// not exist. Trying it again unchanged asks the same question and gets the same
+// answer, three times over, while the run's deadline runs down. Only the token
+// that provoked it can change the outcome.
+//
+// The exceptions earn their place. 429 is explicitly an instruction to come
+// back later, and 408 is the server saying it gave up waiting rather than that
+// it disagreed. 5xx stays retryable throughout: a server having a bad moment is
+// the case retrying exists for.
+func isTerminal(status int) bool {
+	switch status {
+	case http.StatusTooManyRequests, http.StatusRequestTimeout:
+		return false
+	default:
+		return status >= http.StatusBadRequest && status < http.StatusInternalServerError
 	}
 }
 
@@ -312,17 +341,24 @@ func (c *Client) checkStatus(response *http.Response) error {
 type statusError struct {
 	Code       int
 	RetryAfter time.Duration
+
+	// Terminal records that this status will still be the answer next time, so
+	// retrying only spends the run's deadline.
+	Terminal bool
 }
 
 // Error implements error. The server's own instruction is included when it gave
 // one, since that is the difference between a failure worth retrying soon and
 // one worth waiting out.
 func (e *statusError) Error() string {
-	if e.RetryAfter > 0 {
+	switch {
+	case e.RetryAfter > 0:
 		return fmt.Sprintf("the server returned %d and asked to wait %v", e.Code, e.RetryAfter)
+	case e.Terminal:
+		return fmt.Sprintf("the server returned %d, which will not change on a retry", e.Code)
+	default:
+		return fmt.Sprintf("the server returned %d", e.Code)
 	}
-
-	return fmt.Sprintf("the server returned %d", e.Code)
 }
 
 // retryAfter reads the Retry-After header, in seconds, ignoring the HTTP-date

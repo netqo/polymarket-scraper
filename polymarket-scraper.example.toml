@@ -95,8 +95,14 @@ strict_best_bid_ask = false
 discover_limit = 100
 
 # Wait between redial attempts on a dropped connection.
-reconnect_initial_backoff = "1s"
-reconnect_max_backoff = "8s"
+#
+# Deliberately short. A drop stops delta delivery for every token the connection
+# carried, and the tokens are re-seeded over REST independently, so what this
+# wait costs is the updates that happen during it. Most drops are a transient
+# blip and the first retry succeeds; the ceiling is for the case where the far
+# end is genuinely refusing.
+reconnect_initial_backoff = "250ms"
+reconnect_max_backoff = "4s"
 
 # Largest single frame accepted, in bytes.
 #

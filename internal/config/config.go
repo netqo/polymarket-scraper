@@ -83,12 +83,22 @@ const (
 
 // Reconnection defaults.
 //
+// Deliberately short. A dropped connection stops delta delivery for every token
+// it carried, and against a 90 second window the old ceiling of 8 seconds spent
+// nearly a tenth of the run blind. The tokens themselves are re-seeded over
+// REST immediately and independently, so what the wait costs is not trust but
+// the updates that happen during it.
+//
+// The first retry is where the win is: most disconnects are a transient blip
+// and succeed immediately. Backing off still matters for the case where the far
+// end is genuinely refusing, which is why there is a ceiling at all.
+//
 // There is no jitter and no setting for one: this is a single process and its
 // requests are already paced, so jitter would add randomness to a program that
 // otherwise has none.
 const (
-	DefaultReconnectInitialBackoff = time.Second
-	DefaultReconnectMaxBackoff     = 8 * time.Second
+	DefaultReconnectInitialBackoff = 250 * time.Millisecond
+	DefaultReconnectMaxBackoff     = 4 * time.Second
 )
 
 // Bounds on what the scraper will hold in memory or write out.
