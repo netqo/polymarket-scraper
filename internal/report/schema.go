@@ -108,6 +108,17 @@ type Token struct {
 }
 
 // Level is one price level.
+//
+// Structurally identical to book.Level, and deliberately not the same type. The
+// duplication is the point: it is the boundary between what the scraper works
+// with and what it promises, and a field added to the internal type must not
+// appear in a frozen output contract because someone forgot the two were the
+// same declaration. renderLevels is the one place the crossing happens, so
+// there is exactly one place to notice.
+//
+// The same reasoning keeps LastTrade separate from tracker.LastTrade and Token
+// separate from tracker.Snapshot: those carry the wire's optionality, where a
+// pointer means null, while the internal types carry the domain's.
 type Level struct {
 	Price decimal.Dec `json:"price"`
 	Size  decimal.Dec `json:"size"`
