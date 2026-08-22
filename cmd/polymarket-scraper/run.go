@@ -9,11 +9,13 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/netqo/polymarket-scraper/internal/config"
 	"github.com/netqo/polymarket-scraper/internal/engine"
 	"github.com/netqo/polymarket-scraper/internal/logging"
 	"github.com/netqo/polymarket-scraper/internal/report"
+	"github.com/netqo/polymarket-scraper/internal/stream"
 	"github.com/netqo/polymarket-scraper/internal/tokenlist"
 )
 
@@ -90,10 +92,21 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	logTokenListAnomalies(logger, tokens)
 
+	// Opened alongside the log file and closed with it: both outlive the
+	// collection they describe, and both are a usage error if the path cannot
+	// be written rather than something discovered at the end of a run.
+	changes, err := openStream(cfg, proc.runID())
+	if err != nil {
+		logger.Error("cannot open the change stream", "path", cfg.StreamPath, "error", err)
+		return exitUsage
+	}
+	defer closeStream(logger, changes)
+
 	collector, err := engine.New(engine.Options{
 		Config: cfg,
 		Tokens: tokens,
 		Logger: logger,
+		Stream: changes,
 		// The watchdog is the only hard guarantee that the process ends on
 		// time: a goroutine blocked in a syscall will never observe a cancelled
 		// context, so nothing short of terminating can be relied upon.
@@ -142,5 +155,36 @@ func logTokenListAnomalies(logger *slog.Logger, tokens tokenlist.List) {
 		logger.Warn("some ids do not look like token ids and will probably fail",
 			logging.Cat(logging.CategoryStartup),
 			"count", len(tokens.Suspicious), "first", tokens.Suspicious[0])
+	}
+}
+
+// openStream opens the change stream, or returns nil when none was configured.
+func openStream(cfg config.Config, runID string) (*stream.Writer, error) {
+	if cfg.StreamPath == "" {
+		return nil, nil
+	}
+
+	return stream.New(stream.Options{
+		Path:      cfg.StreamPath,
+		Run:       runID,
+		StartedAt: time.Now(),
+	})
+}
+
+// closeStream closes the stream and says so if anything was lost.
+//
+// A dropped record is reported rather than swallowed: a reader that does not
+// know the stream is incomplete will assume it is complete, which is the same
+// mistake the output document goes to some length to prevent.
+func closeStream(logger *slog.Logger, changes *stream.Writer) {
+	if changes == nil {
+		return
+	}
+
+	if dropped := changes.Dropped(); dropped > 0 {
+		logger.Warn("the change stream is incomplete", "dropped", dropped)
+	}
+	if err := changes.Close(); err != nil {
+		logger.Error("cannot close the change stream", "error", err)
 	}
 }

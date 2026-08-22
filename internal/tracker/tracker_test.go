@@ -551,9 +551,9 @@ func TestOnFlagReportsEachFlagOnceAsItIsRaised(t *testing.T) {
 
 	var seen []raised
 	tr := New("111", Options{
-		OnFlag: func(tokenID string, flag Flag) {
+		Observer: recorder{onFlag: func(tokenID string, flag Flag) {
 			seen = append(seen, raised{tokenID, flag})
-		},
+		}},
 	})
 
 	tr.ApplySnapshot(snapshotAt("1000"), at(0))
@@ -585,7 +585,7 @@ func TestOnFlagMatchesTheFlagsInTheSnapshot(t *testing.T) {
 	var seen []Flag
 	tr := New("111", Options{
 		Discovered: true,
-		OnFlag:     func(_ string, flag Flag) { seen = append(seen, flag) },
+		Observer:   recorder{onFlag: func(_ string, flag Flag) { seen = append(seen, flag) }},
 	})
 
 	tr.ApplySnapshot(snapshotAt("1000"), at(0))
@@ -611,5 +611,31 @@ func TestMissingSnapshotIsCompleteAndEmpty(t *testing.T) {
 	}
 	if got.Bids == nil || got.Asks == nil || got.Flags == nil {
 		t.Error("Missing left a nil slice, which would serialize as null rather than []")
+	}
+}
+
+// recorder is an Observer built from whichever callbacks a test cares about.
+// The unset ones do nothing, so a test about flags says nothing about quotes.
+type recorder struct {
+	onFlag  func(tokenID string, flag Flag)
+	onQuote func(tokenID string, quote Quote)
+	onTrade func(tokenID string, trade LastTrade)
+}
+
+func (r recorder) Flagged(tokenID string, flag Flag) {
+	if r.onFlag != nil {
+		r.onFlag(tokenID, flag)
+	}
+}
+
+func (r recorder) Quoted(tokenID string, quote Quote) {
+	if r.onQuote != nil {
+		r.onQuote(tokenID, quote)
+	}
+}
+
+func (r recorder) Traded(tokenID string, trade LastTrade) {
+	if r.onTrade != nil {
+		r.onTrade(tokenID, trade)
 	}
 }

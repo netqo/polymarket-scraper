@@ -30,18 +30,20 @@ type Options struct {
 	// during the run rather than requested.
 	Discovered bool
 
-	// OnFlag is called the first time each flag is raised for this token, and
-	// never for a repeat of one already raised.
+	// Observer is told about this token's changes as they happen, so that a run
+	// can be watched while it is running rather than only read once it has
+	// finished.
 	//
-	// It exists so that a run can report trouble while it is happening rather
-	// than only in the document it writes at the end. A callback rather than a
-	// logger field keeps this package free of I/O and of any knowledge of how a
-	// record is rendered, which is what lets the trust rules be verified with
-	// no clock, no network and no concurrency in the way.
+	// An interface rather than a field of function values because the three
+	// things worth reporting are one concern: they are wanted together or not
+	// at all, and a caller that implements one implements all of them. It also
+	// keeps this package free of I/O and of any knowledge of where the changes
+	// go, which is what lets the trust rules be verified with no clock, no
+	// network and no concurrency in the way.
 	//
-	// It runs on whichever goroutine owns the tracker, so it must not block.
-	// Nil disables it.
-	OnFlag func(tokenID string, flag Flag)
+	// Its methods run on whichever goroutine owns the tracker, so none of them
+	// may block. Nil disables reporting.
+	Observer Observer
 }
 
 // Tracker holds the state of one token.
@@ -75,6 +77,11 @@ type Tracker struct {
 	lastAppliedMillis int64
 	haveLastMillis    bool
 	lastDeltaHash     string
+
+	// lastQuote is the top of book most recently reported to the observer, so
+	// that an update leaving it where it was reports nothing.
+	lastQuote Quote
+	haveQuote bool
 
 	window window
 }
@@ -122,6 +129,7 @@ func (t *Tracker) ApplySnapshot(snapshot wire.Book, at time.Time) Effect {
 	t.state = StateLive
 	t.noteFreshness(snapshot.Timestamp, at)
 	t.window.sample(&t.book, at)
+	t.noteQuote()
 
 	return EffectNone
 }
@@ -165,6 +173,7 @@ func (t *Tracker) ApplyRESTBook(fetched wire.RESTBook, at time.Time) Effect {
 	t.state = StateLive
 	t.noteFreshness(fetched.Timestamp, at)
 	t.window.sample(&t.book, at)
+	t.noteQuote()
 
 	return EffectNone
 }
@@ -213,6 +222,7 @@ func (t *Tracker) ApplyChange(entry wire.PriceChangeEntry, timestamp string, at 
 
 	t.noteFreshness(timestamp, at)
 	t.window.sample(&t.book, at)
+	t.noteQuote()
 
 	return EffectNone
 }
@@ -318,12 +328,17 @@ func (t *Tracker) ApplyTrade(trade wire.LastTrade, _ time.Time) Effect {
 	if trade.Market != "" {
 		t.conditionID = trade.Market
 	}
-	t.lastTrade = &LastTrade{
+	fill := LastTrade{
 		Price:      trade.Price,
 		Size:       trade.Size,
 		Side:       trade.Side,
 		FeeRateBPS: trade.FeeRateBPS,
 		Timestamp:  trade.Timestamp,
+	}
+	t.lastTrade = &fill
+
+	if t.opts.Observer != nil {
+		t.opts.Observer.Traded(t.tokenID, fill)
 	}
 
 	return EffectNone
@@ -528,8 +543,8 @@ func (t *Tracker) flag(f Flag) {
 
 	t.flags = append(t.flags, f)
 
-	if t.opts.OnFlag != nil {
-		t.opts.OnFlag(t.tokenID, f)
+	if t.opts.Observer != nil {
+		t.opts.Observer.Flagged(t.tokenID, f)
 	}
 }
 

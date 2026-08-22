@@ -6,6 +6,29 @@ The document `polymarket-scraper` writes to `--out`. This file is the contract:
 if it and the code disagree, that is a bug in the scraper, and a test in
 `internal/report` fails when a field exists in one and not the other.
 
+There is a second, optional output: the change stream written to `--stream`,
+documented in `STREAM.md`. The document is the contract and carries the
+guarantees; the stream is the same run told as it happens, for anything that
+has to act during the window rather than after it.
+
+## Units
+
+One rule, in both outputs: **a name says its unit, or the value is a string that
+carries its own.**
+
+| Kind | Convention |
+|---|---|
+| Prices, sizes, spreads, mids, fee rates | JSON strings. No unit to state; they are the API's own decimals. |
+| Durations the scraper reports | The name ends in its unit: `window_seconds`, `two_sided_millis`. |
+| Timestamps the scraper generates | ISO-8601 UTC with milliseconds and a `Z`. |
+| Timestamps from the feed | The API's own string, epoch milliseconds, not reformatted. |
+| Counts | Plain numbers, named for what is counted. |
+
+The document's two duration fields use different units, which is a wart this
+contract is stuck with: `window_seconds` and `two_sided_millis` are both frozen
+at `schema_version` 1.0 and renaming either would break every consumer. The rule
+above is what stops it spreading, and nothing added since follows it.
+
 ## Guarantees
 
 These hold for every run, and they are the reason the document is shaped the way
@@ -303,3 +326,5 @@ Non-empty stdout is therefore a reliable success signal on its own.
   "errors": ["connection 1: no frame for 30s, reconnecting"]
 }
 ```
+
+

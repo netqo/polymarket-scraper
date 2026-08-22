@@ -38,7 +38,14 @@ type processLogger struct {
 	logger    *slog.Logger
 	coalescer *logging.Coalescer
 	file      *os.File
+
+	// run identifies this run, shared with the change stream so a reader can
+	// line the two up.
+	run string
 }
+
+// runID reports the identifier every record of this run carries.
+func (p *processLogger) runID() string { return p.run }
 
 // newProcessLogger builds the process logger.
 //
@@ -90,10 +97,13 @@ func newProcessLogger(stderr io.Writer, cfg config.Config) (*processLogger, erro
 	// either destination.
 	filtered := logging.NewFilter(coalescer, disabledCategories(cfg))
 
+	run := newRunID()
+
 	return &processLogger{
-		logger:    slog.New(filtered).With(runKey, newRunID()),
+		logger:    slog.New(filtered).With(runKey, run),
 		coalescer: coalescer,
 		file:      file,
+		run:       run,
 	}, nil
 }
 

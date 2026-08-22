@@ -170,6 +170,10 @@ func (e *Engine) applyEvent(s *shardState, event wire.Event, at time.Time) {
 		})
 
 	case wire.MarketResolved:
+		if e.changes != nil {
+			e.changes.Resolved(typed.Market, typed.AssetIDs,
+				typed.WinningAssetID, typed.WinningOutcome, typed.Timestamp)
+		}
 		e.events.noteResolved(typed, at)
 		for _, assetID := range typed.AssetIDs {
 			e.withTracker(s, assetID, func(t *tracker.Tracker) tracker.Effect {
@@ -184,6 +188,10 @@ func (e *Engine) applyEvent(s *shardState, event wire.Event, at time.Time) {
 		// depends on it, and every shard sees the same feed, which is why the
 		// log deduplicates.
 		if firstSighting := e.events.noteNewMarket(typed, at); firstSighting {
+			if e.changes != nil {
+				e.changes.Announced(typed.Question, typed.ConditionID,
+					typed.AssetIDs, typed.Outcomes, typed.Timestamp)
+			}
 			e.admitAnnounced(s, typed, at)
 		}
 

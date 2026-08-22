@@ -71,6 +71,7 @@ type file struct {
 type inputSection struct {
 	Tokens *string `toml:"tokens"`
 	Out    *string `toml:"out"`
+	Stream *string `toml:"stream"`
 }
 
 type windowSection struct {
@@ -198,6 +199,7 @@ func (f *file) apply(cfg *Config) {
 	if s := f.Input; s != nil {
 		assign(&cfg.TokensPath, s.Tokens)
 		assign(&cfg.OutPath, s.Out)
+		assign(&cfg.StreamPath, s.Stream)
 	}
 
 	if s := f.Window; s != nil {

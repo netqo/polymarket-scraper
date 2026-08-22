@@ -41,6 +41,12 @@ mode = "production"
 # tokens = "tokens.txt"     # one token id per line, or a JSON array of strings
 # out    = "books.json"     # written atomically; never observed half-written
 
+# Also append the run's changes here as they happen, one JSON object per line:
+# quotes when a top of book moves, trades, flags and announcements. Meant to be
+# tailed while the run is going, which the output document cannot be because it
+# is written once at the end. Empty disables it. See SCHEMA.md.
+# stream = "changes.jsonl"
+
 
 # WINDOW ----------------------------------------------------------------------
 
