@@ -131,10 +131,10 @@ func TestParseOverridesEveryDefault(t *testing.T) {
 // validated and dead. Checking the count here is what catches a flag added to
 // newFlagSet and then never exercised.
 func TestEveryBoundFlagIsOverriddenByATest(t *testing.T) {
-	// --version and --config are exercised by their own tests; everything else
-	// is covered by TestParseOverridesEveryDefault above.
+	// --version, --help, --config and --mode are exercised by their own tests;
+	// everything else is covered by TestParseOverridesEveryDefault above.
 	covered := map[string]bool{
-		"version": true, "config": true, "mode": true,
+		"version": true, "help": true, "config": true, "mode": true,
 		"tokens": true, "out": true, "duration": true, "grace": true,
 		"rest-only": true, "rest-rate": true, "rest-batch-size": true,
 		"max-assets-per-connection": true, "ping-interval": true,

@@ -32,6 +32,9 @@ var (
 	ErrHelp = errors.New("help requested")
 	// ErrVersion reports that the version was requested.
 	ErrVersion = errors.New("version requested")
+
+	// ErrHelpJSON reports that help was requested in machine-readable form.
+	ErrHelpJSON = errors.New("machine-readable help requested")
 )
 
 // Parse turns command line arguments into a validated Config.
@@ -78,10 +81,16 @@ func Parse(args []string, lookupEnv func(string) (string, bool)) (Config, error)
 	loaded.apply(&cfg)
 	applyEnv(&cfg, lookupEnv)
 
-	var showVersion bool
-	fs := newFlagSet(&cfg, &showVersion)
+	var (
+		showVersion bool
+		help        string
+	)
+	fs := newFlagSet(&cfg, &showVersion, &help)
 	if err := fs.Parse(args); err != nil {
 		return Config{}, translateFlagError(err)
+	}
+	if requested := helpRequest(help); requested != nil {
+		return Config{}, requested
 	}
 	if showVersion {
 		return Config{}, ErrVersion
@@ -107,10 +116,16 @@ func Parse(args []string, lookupEnv func(string) (string, bool)) (Config, error)
 func probeFlags(args []string) (Config, map[string]bool, error) {
 	probe := New()
 
-	var showVersion bool
-	fs := newFlagSet(&probe, &showVersion)
+	var (
+		showVersion bool
+		help        string
+	)
+	fs := newFlagSet(&probe, &showVersion, &help)
 	if err := fs.Parse(args); err != nil {
 		return Config{}, nil, translateFlagError(err)
+	}
+	if requested := helpRequest(help); requested != nil {
+		return Config{}, nil, requested
 	}
 	if showVersion {
 		return Config{}, nil, ErrVersion
@@ -166,7 +181,23 @@ func applyEnv(cfg *Config, lookupEnv func(string) (string, bool)) {
 	}
 }
 
+// helpRequest maps a --help format onto its sentinel, or nil when help was not
+// asked for.
+func helpRequest(format string) error {
+	switch format {
+	case HelpText:
+		return ErrHelp
+	case HelpJSON:
+		return ErrHelpJSON
+	default:
+		return nil
+	}
+}
+
 // translateFlagError maps the flag package's help sentinel onto ours.
+//
+// -h is still handled by the flag package, since binding "help" does not bind
+// its shorthand, and it means the same thing as the bare --help.
 func translateFlagError(err error) error {
 	if errors.Is(err, flag.ErrHelp) {
 		return ErrHelp
@@ -185,12 +216,15 @@ func translateFlagError(err error) error {
 // Not every setting has a flag. The tuning values consolidated out of the
 // engine and the clients are reachable from the settings file alone, because a
 // command line with thirty entries buries the dozen anyone actually sets.
-func newFlagSet(cfg *Config, showVersion *bool) *flag.FlagSet {
+func newFlagSet(cfg *Config, showVersion *bool, help *string) *flag.FlagSet {
 	fs := flag.NewFlagSet(programName, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	fs.Usage = func() {}
 
 	fs.BoolVar(showVersion, "version", false, "")
+	// Bound rather than left to the flag package, so that --help=json can ask
+	// for the same contract as data.
+	fs.Var(helpFormat{help}, "help", "")
 
 	fs.StringVar(&cfg.ConfigPath, "config", cfg.ConfigPath, "")
 	fs.StringVar(&cfg.Mode, "mode", cfg.Mode, "")

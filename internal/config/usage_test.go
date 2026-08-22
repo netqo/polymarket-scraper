@@ -14,10 +14,14 @@ var mentionedFlag = regexp.MustCompile(`(?m)^\s{2}--([a-z0-9-]+)`)
 // boundFlags returns every flag name Parse binds.
 func boundFlags() []string {
 	cfg := New()
-	var showVersion bool
+
+	var (
+		showVersion bool
+		help        string
+	)
 
 	var names []string
-	newFlagSet(&cfg, &showVersion).VisitAll(func(f *flag.Flag) {
+	newFlagSet(&cfg, &showVersion, &help).VisitAll(func(f *flag.Flag) {
 		names = append(names, f.Name)
 	})
 	slices.Sort(names)
@@ -52,8 +56,6 @@ func TestUsageDocumentsEveryBoundFlag(t *testing.T) {
 
 func TestUsageDocumentsNothingThatDoesNotExist(t *testing.T) {
 	bound := boundFlags()
-	// --help is handled by the flag package itself rather than bound by us.
-	bound = append(bound, "help")
 
 	for _, name := range documentedFlags() {
 		if !slices.Contains(bound, name) {
