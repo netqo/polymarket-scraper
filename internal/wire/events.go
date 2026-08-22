@@ -4,19 +4,10 @@
 // about the shape of Polymarket's messages is confined here, so a protocol
 // change is a change to one package rather than a change everywhere.
 //
-// Several things in this package exist because the live API and its published
-// documentation disagree, and every one of the disagreements fails silently
-// rather than loudly:
-//
-//   - The initial book snapshot arrives as a JSON array holding every
-//     subscribed asset in a single frame. Every other event is a bare object.
-//     A decoder that assumes objects throws away all of its initial state and
-//     then looks healthy, because deltas keep arriving.
-//   - A price change is a batch. The field is price_changes, the envelope has
-//     no asset id at all, and the best quotes travel on each element. One
-//     message routinely covers both legs of a binary market.
-//   - Keepalives are raw uppercase text frames, not JSON and not websocket
-//     protocol pings, so they have to be recognised before any parsing.
+// Much of what is here exists because the live API and its published
+// documentation disagree, and every one of those disagreements fails silently.
+// PROTOCOL.md is the record of them, with captured payloads; the comments below
+// say only what a reader of this file needs in order to change it safely.
 //
 // Ordering of book levels is not corrected here. That belongs to the book
 // package, which sorts on ingest and does not trust either the documentation or

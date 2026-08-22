@@ -7,17 +7,11 @@
 // interpretation be tested with no network at all.
 //
 // Two details of the protocol are easy to get wrong and expensive to get wrong
-// quietly:
-//
-//   - The keepalive is an application-level text frame containing the literal
-//     word PING, not a websocket protocol ping. Calling a library's Ping method
-//     talks to the wrong layer, and the connection dies half a minute later for
-//     no visible reason.
-//   - The server accepts a subscription of roughly 750 assets and then, past
-//     that, silently stops sending the initial snapshot while continuing to
-//     deliver incremental updates. Nothing reports an error. A client that does
-//     not count what it received looks perfectly healthy while holding no book
-//     state at all, which is why SnapshotsSeen exists.
+// quietly: the keepalive is a text frame rather than a protocol ping, and past
+// roughly 750 assets a subscription is accepted but its initial snapshot
+// silently never arrives. PROTOCOL.md explains both. SnapshotsSeen exists to
+// detect the second, since a client that does not count what it received looks
+// perfectly healthy while holding no book state at all.
 package wsclient
 
 import (

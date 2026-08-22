@@ -5,13 +5,12 @@
 // correctness guarantees are properties of this data structure alone and are
 // worth being able to prove by table test.
 //
-// The first is ordering. The published API documentation says bids come back
-// descending and asks ascending; the live API does the exact opposite on both
-// REST and the websocket. Taking the first element of either array as the best
-// price therefore yields the worst one. Rather than trusting either claim, this
-// package sorts on ingest and keeps both sides in output order at all times, so
-// the invariant is true by construction rather than by a sort call somewhere at
-// the end.
+// The first is ordering. The live API returns both sides in the opposite order
+// to what its own documentation claims, so taking the first element of either
+// array yields the worst price rather than the best; PROTOCOL.md has the
+// details. Rather than trusting either claim, this package sorts on ingest and
+// keeps both sides in output order at all times, so the invariant is true by
+// construction rather than by a sort call somewhere at the end.
 //
 // The second is deletion. A price change with size zero removes its level; it
 // does not set the level to zero. Getting that backwards leaves phantom
